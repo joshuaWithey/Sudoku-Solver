@@ -3,11 +3,11 @@ import numpy as np
 import math
 from sudoku_recognition.sudoku_recogntion import find_puzzle, identify_cell
 import tensorflow as tf
-from tensorflow import keras
+#from tensorflow import keras
 from keras.preprocessing.image import img_to_array
 import time
 
-# model = tf.keras.models.load_model('digit_classifier.h5')
+model = tf.keras.models.load_model('digit_classifier.h5')
 
 
 def distance_between(p1, p2):
@@ -68,7 +68,6 @@ while True:
             (x, y, w, h) = cv2.boundingRect(approx)
             ratio = w / float(h)
             if ratio > 0.95 and ratio < 1.05:
-
                 puzzle_found += 1
                 bottom_right = contours[0][np.argmax(
                     [point[0][0] + point[0][1] for point in contours[0]])][0]
@@ -79,61 +78,66 @@ while True:
                 bottom_left = contours[0][np.argmin(
                     [point[0][0] - point[0][1] for point in contours[0]])][0]
                 if (puzzle_found > 100):
-
+                    # Draw outline of puzzle
                     cv2.line(frame, bottom_left, bottom_right, (0, 255, 0), 1)
                     cv2.line(frame, bottom_left, top_left, (0, 255, 0), 1)
                     cv2.line(frame, bottom_right, top_right, (0, 255, 0), 1)
                     cv2.line(frame, top_left, top_right, (0, 255, 0), 1)
 
-                    # if (not puzzle_solved):
-                    #     # # Crop and warp image
-                    #     # Store points of corners
-                    #     pt1 = np.float32(
-                    #         [top_left, top_right, bottom_left, bottom_right])
+                    # # Crop and warp image
+                    # Store points of corners
+                    pt1 = np.float32(
+                        [top_left, top_right, bottom_left, bottom_right])
 
-                    #     # Calculate side length of new picture.
-                    #     # Use maximum of all sides
-                    #     side = max(distance_between(top_left, top_right),
-                    #                distance_between(top_right, bottom_right),
-                    #                distance_between(bottom_right, bottom_left),
-                    #                distance_between(bottom_left, top_left)
-                    #                )
+                    # Calculate side length of new picture.
+                    # Use maximum of all sides
+                    side = max(distance_between(top_left, top_right),
+                                distance_between(top_right, bottom_right),
+                                distance_between(bottom_right, bottom_left),
+                                distance_between(bottom_left, top_left)
+                                )
 
-                    #     # Define new image size
-                    #     pt2 = np.float32(
-                    #         [[0, 0], [side, 0], [0, side], [side, side]])
+                    # Define new image size
+                    pt2 = np.float32(
+                        [[0, 0], [side, 0], [0, side], [side, side]])
 
-                    #     # Crop and warp original and grayscale images
-                    #     gray_frame = cv2.warpPerspective(
-                    #         gray_frame, cv2.getPerspectiveTransform(pt1, pt2), (side, side))
+                    # Crop and warp original and grayscale images
+                    gray_frame = cv2.warpPerspective(
+                        gray_frame, cv2.getPerspectiveTransform(pt1, pt2), (side, side))
 
-                    #     cell_size = gray_frame.shape[0] // 9
+                    cell_size = gray_frame.shape[0] // 9
 
-                    #     for y in range(0, 9):
-                    #         for x in range(0, 9):
-                    #             start_x = x * cell_size
-                    #             start_y = y * cell_size
-                    #             end_x = (x + 1) * cell_size
-                    #             end_y = (y + 1) * cell_size
+                    for y in range(0, 9):
+                        for x in range(0, 9):
+                            start_x = x * cell_size
+                            start_y = y * cell_size
+                            end_x = (x + 1) * cell_size
+                            end_y = (y + 1) * cell_size
 
-                    #             # Extract cell from board
-                    #             cell = gray_frame[start_y:end_y, start_x:end_x]
-                    #             digit = identify_cell(cell)
-                    #             if digit is not None:
-                    #                 digit = cv2.resize(digit, (28, 28))
-                    #                 digit = digit.astype("float") / 255
-                    #                 digit = img_to_array(digit)
-                    #                 digit = np.expand_dims(digit, axis=0)
+                            # Extract cell from board
+                            cell = gray_frame[start_y:end_y, start_x:end_x]
+                            digit = identify_cell(cell)
 
-                    #                 pred = model.predict(digit)
-                    #                 board[y][x] = pred.argmax(axis=1)[0]
+                         
+                            if digit is not None:
+                                digit = cv2.resize(digit, (28, 28))
+                                digit = digit.astype("float") / 255
+                                digit = img_to_array(digit)
+                                digit = np.expand_dims(digit, axis=0)
 
-                    #     puzzle_solved = True
-                    #     print(board)
+                                pred = model.predict(digit)
+                                print(max(pred[0]), pred.argmax(axis=1)[0])
+                                board[y][x] = pred.argmax(axis=1)[0]
+
+                    puzzle_solved = True
+                    print(board)
+                    break
 
         else:
             puzzle_found = 0
-            puzzle_solved = False
+    else:
+        puzzle_found = 0
+    
 
     cv2.imshow('Input', frame)
     c = cv2.waitKey(1)
