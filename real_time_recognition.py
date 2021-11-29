@@ -6,20 +6,9 @@ import tensorflow as tf
 from keras.preprocessing.image import img_to_array
 import time
 
-# Helper function to determine if image is blurry
-# Compute laplcian of the image and return the focus
-def variance_of_laplacian(image):
-    return cv2.Laplacian(image, cv2.CV_64F).var()
+model = tf.keras.models.load_model('digit_classifier.h5')
 
-# model = tf.keras.models.load_model('digit_classifier.h5')
-
-
-def distance_between(p1, p2):
-    a = p1[0] - p2[0]
-    b = p1[1] - p1[1]
-    return int(np.sqrt(a ** 2 + b ** 2))
-
-
+# Import webcam
 capture = cv2.VideoCapture(0)
 
 # Sudoku board
@@ -29,62 +18,63 @@ board = np.zeros((9, 9), dtype='int')
 solved_board = np.zeros((9, 9), dtype='bool')
 
 # Counter for how long a puzzle has been found
-puzzle_found = 0
+puzzle_found = False
 puzzle_solved = False
 cell_solved = 0
 
 if not capture.isOpened():
     raise IOError
 
-
 while True:
     ret, frame = capture.read()
 
-    # Apply grayscale
-    gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
     # Find corners of puzzle out of frame
-    corners = find_puzzle(gray_frame)    
+    corners, processed_frame = find_puzzle(frame)    
 
     if corners is not None:
-        
+        cropped_frame = crop_puzzle(processed_frame, corners)        
         # Draw square around puzzle
-        cv2.polylines(frame, [corners], True, (0,255,255))
+        cv2.polylines(frame, [corners], True, (0,255,255), 3)
+        if not puzzle_found:
+            # Crop and warp puzzle from frame        
+            cell_size = cropped_frame.shape[0] // 9
 
-        # Crop and warp puzzle from frame
-        cropped_frame = crop_puzzle(gray_frame, corners)
-        
-        cell_size = cropped_frame.shape[0] // 9
+            for y in range(0, 9):
+                for x in range(0, 9):
+                    if solved_board[y][x] == False:
+                        start_x = x * cell_size
+                        start_y = y * cell_size
+                        end_x = (x + 1) * cell_size
+                        end_y = (y + 1) * cell_size
 
-        for y in range(0, 9):
-            for x in range(0, 9):
-                if solved_board[y][x] == False:
-                    start_x = x * cell_size
-                    start_y = y * cell_size
-                    end_x = (x + 1) * cell_size
-                    end_y = (y + 1) * cell_size
+                        # Extract cell from board
+                        cell = cropped_frame[start_y:end_y, start_x:end_x]
+                        digit = identify_cell(cell)
+                    
+                        if digit is not None:
+                            digit = cv2.resize(digit, (28, 28))
+                            digit = digit.astype("float") / 255
+                            digit = img_to_array(digit)
+                            digit = np.expand_dims(digit, axis=0)
 
-                    # Extract cell from board
-                    cell = cropped_frame[start_y:end_y, start_x:end_x]
-                    digit = identify_cell(cell)
-                
-        #             if digit is not None:
-        #                 digit = cv2.resize(digit, (28, 28))
-        #                 digit = digit.astype("float") / 255
-        #                 digit = img_to_array(digit)
-        #                 digit = np.expand_dims(digit, axis=0)
-
-        #                 pred = model.predict(digit)
-        #                 if max(pred[0]) > 0.98:
-        #                     solved_board[y][x] = True
-        #                     board[y][x] = pred.argmax(axis=1)[0]
-        #             else:
-        #                 solved_board[y][x] = True
-        # if solved_board.sum() == 9 * 9:
-        #     puzzle_solved = True
-        #     print(board)
-        #     break
+                            pred = model.predict(digit)
+                            if max(pred[0]) > 0.95:
+                                board[y][x] = pred.argmax(axis=1)[0] + 1
+                                solved_board[y][x] = True
+                        else:
+                            solved_board[y][x] = True
     
+        if solved_board.sum() == 81:
+            new_image = cv2.putText(
+                img = frame,
+                text = "Good Morning",
+                org = (200, 200),
+                fontFace = cv2.FONT_HERSHEY_DUPLEX,
+                fontScale = 3.0,
+                color = (125, 246, 55),
+                thickness = 3
+            )
+            puzzle_found = True
 
     cv2.imshow('Input', frame)
     c = cv2.waitKey(1)
@@ -95,3 +85,5 @@ while True:
 
 capture.release()
 cv2.destroyAllWindows()
+
+

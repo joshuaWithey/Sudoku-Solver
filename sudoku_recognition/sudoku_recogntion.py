@@ -23,8 +23,8 @@ def distance_between(p1, p2):
 
 def find_puzzle(image):
     # If image too blurry
-    if variance_of_laplacian(image) < 300:
-        return None
+    if variance_of_laplacian(image) < 100:
+        return None, None
 
     # Apply grayscale
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -49,8 +49,7 @@ def find_puzzle(image):
     approx = cv2.approxPolyDP(contours[0], 0.02 * peri, True)
     (x, y, w, h) = cv2.boundingRect(approx)
     ratio = w / float(h)
-    if len(approx) == 4:
-        # and ratio > 0.95 and ratio < 1.05:
+    if len(approx) == 4 and ratio > 0.9 and ratio < 1.1:
         # Find corners of largest contour representing the sudoku grid
 
         # Bottom right corner of puzzle will have largest (x + y) value
@@ -69,7 +68,7 @@ def find_puzzle(image):
         return np.array([top_left, top_right, bottom_right, bottom_left]), processed_image
 
     else:
-        return None
+        return None, None
 
 
 def crop_puzzle(image, corners):
@@ -153,5 +152,8 @@ def identify_cell(cell):
 
     # Calculatee cropped digit
     digit = digit[start_y:start_y+side, start_x:start_x+side]
+
+    # cv2.imshow('Digit', digit)
+    # cv2.waitKey(0)
 
     return digit
