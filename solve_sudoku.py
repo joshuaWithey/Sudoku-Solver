@@ -1,4 +1,4 @@
-from sudoku_recognition.sudoku_recogntion import find_puzzle, identify_cell
+from sudoku_recognition.sudoku_recogntion import find_puzzle, identify_cell, crop_puzzle
 import cv2
 import numpy as np
 import tensorflow as tf
@@ -10,8 +10,11 @@ model = tf.keras.models.load_model('digit_classifier.h5')
 # Import image
 image = cv2.imread('sudoku2.jpg')
 
-# Extract board from image
-original_image, grayscale_image = find_puzzle(image)
+
+# Find corners of puzzle out of frame
+corners = find_puzzle(image) 
+# Crop and warp puzzle from frame
+cropped_image = crop_puzzle(gray_image, corners)
 
 # Initialize 9 x 9 sudoku board
 board = np.zeros((9, 9), dtype='int')
