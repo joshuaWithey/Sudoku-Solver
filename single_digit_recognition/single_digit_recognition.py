@@ -1,10 +1,16 @@
-from pandas.core.arrays.integer import UInt8Dtype
-import tensorflow as tf
 from tensorflow import keras
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import argparse
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelBinarizer
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.layers import MaxPooling2D
+from tensorflow.keras.layers import Activation
+from tensorflow.keras.layers import Flatten
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dropout
 
 # import written images
 (train_X, train_y), (test_X, test_y) = keras.datasets.mnist.load_data()
@@ -22,54 +28,49 @@ train_data = np.array(data.drop(['names'], axis=1), dtype=np.uint8)
 train_data = np.reshape(train_data, (-1, 28, 28))
 
 # Combine datasets
-
 train_data = np.concatenate((train_data, train_X), axis=0)
 train_labels = np.concatenate((train_labels, train_y), axis=0)
 
-# # Scale values to between 0 and 1
-train_data = train_data / 255
-# test_data = test_data / 255
+# Remove 0s
+train_filter = np.where((train_labels != 0))
+train_data, train_labels = train_data[train_filter], train_labels[train_filter]
 
+# Add channel
+train_data = train_data.reshape((train_data.shape[0], 28, 28, 1))
+
+# Scale values to between 0 and 1
+train_data = train_data / 255
+
+# Binarize labels
+le = LabelBinarizer()
+train_labels = le.fit_transform(train_labels)
 
 model = keras.Sequential()
+inputShape = (28, 28, 1)
 
-# Create neural network
-# First layer
-model.add(keras.layers.Conv2D(
-    input_shape=(28, 28, 1),
-    kernel_size=5,
-    filters=8,
-    strides=1,
-    activation='relu',
-    kernel_initializer='variance_scaling'
-))
-model.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+model.add(Conv2D(32, (5, 5), padding="same",
+                 input_shape=inputShape))
+model.add(Activation("relu"))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+# second set of CONV => RELU => POOL layers
+model.add(Conv2D(32, (3, 3), padding="same"))
+model.add(Activation("relu"))
+model.add(MaxPooling2D(pool_size=(2, 2)))
+# first set of FC => RELU layers
+model.add(Flatten())
+model.add(Dense(64))
+model.add(Activation("relu"))
+model.add(Dropout(0.5))
+# second set of FC => RELU layers
+model.add(Dense(64))
+model.add(Activation("relu"))
+model.add(Dropout(0.5))
+# softmax classifier
+model.add(Dense(9))
+model.add(Activation("softmax"))
 
-# Second layer
-model.add(keras.layers.Conv2D(
-    input_shape=(28, 28, 1),
-    kernel_size=5,
-    filters=16,
-    strides=1,
-    activation='relu',
-    kernel_initializer='variance_scaling'
-))
-model.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-
-# Flatten model
-model.add(keras.layers.Flatten())
-
-# Compress to output
-model.add(keras.layers.Dense(
-    units=10,
-    kernel_initializer='variance_scaling',
-    activation='softmax'
-))
-
-# Compile
-model.compile(optimizer='adam',
-              loss='sparse_categorical_crossentropy',
-              metrics=['accuracy'])
+model.compile(loss="categorical_crossentropy", optimizer='adam',
+              metrics=["accuracy"])
 
 # Training
 model.fit(train_data, train_labels, epochs=10)

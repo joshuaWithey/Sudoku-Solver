@@ -10,19 +10,22 @@ from tensorflow import keras
 def variance_of_laplacian(image):
     return cv2.Laplacian(image, cv2.CV_64F).var()
 
-# Helper function to compute distance between two points using pythagorus
+# Helper function to compute distance between two points
+
+
 def distance_between(p1, p2):
     a = p1[0] - p2[0]
     b = p1[1] - p1[1]
     return int(np.sqrt(a ** 2 + b ** 2))
 
-# Given an image of a sudoku board, return it cropped and straightened
+# Given an image of a sudoku board, return it cropped and straightened, as well as array of corners
 
 
 def find_puzzle(image):
+    # If image too blurry
     if variance_of_laplacian(image) < 300:
         return None
-    
+
     # Apply grayscale
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
@@ -46,7 +49,8 @@ def find_puzzle(image):
     approx = cv2.approxPolyDP(contours[0], 0.02 * peri, True)
     (x, y, w, h) = cv2.boundingRect(approx)
     ratio = w / float(h)
-    if len(approx) == 4 and ratio > 0.95 and ratio < 1.05:
+    if len(approx) == 4:
+        # and ratio > 0.95 and ratio < 1.05:
         # Find corners of largest contour representing the sudoku grid
 
         # Bottom right corner of puzzle will have largest (x + y) value
@@ -61,13 +65,11 @@ def find_puzzle(image):
             [point[0][0] - point[0][1] for point in contours[0]])][0]
         bottom_left = contours[0][np.argmin(
             [point[0][0] - point[0][1] for point in contours[0]])][0]
-        
-        return np.array([top_left, top_right, bottom_right, bottom_left])
-    
+
+        return np.array([top_left, top_right, bottom_right, bottom_left]), processed_image
+
     else:
         return None
-
-    
 
 
 def crop_puzzle(image, corners):
@@ -78,17 +80,17 @@ def crop_puzzle(image, corners):
     # Calculate side length of new picture.
     # Use maximum of all sides
     side = max(distance_between(corners[0], corners[1]),
-            distance_between(corners[1], corners[2]),
-            distance_between(corners[2], corners[3]),
-            distance_between(corners[3], corners[0])
-            )
+               distance_between(corners[1], corners[2]),
+               distance_between(corners[2], corners[3]),
+               distance_between(corners[3], corners[0])
+               )
 
     # Define new image size
     pt2 = np.array([
         [0, 0],
-		[side - 1, 0],
-		[side - 1, side - 1],
-		[0, side - 1]], dtype = "float32")
+        [side - 1, 0],
+        [side - 1, side - 1],
+        [0, side - 1]], dtype="float32")
 
     # Crop and warp original and grayscale images
 
@@ -100,9 +102,11 @@ def crop_puzzle(image, corners):
 
 
 def identify_cell(cell):
-    processed_cell = cv2.threshold(cell, 0, 255,
-                         cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-    processed_cell = clear_border(processed_cell)
+    limit = cell.shape[0] // 10
+
+    processed_cell = cv2.threshold(cell, 128, 255, cv2.THRESH_BINARY)[1]
+
+    processed_cell = clear_border(cell)
 
     # Find contours to find black square
     contours, _ = cv2.findContours(
@@ -115,29 +119,39 @@ def identify_cell(cell):
     # Find largest contour to determine if a number
     largest_contour = max(contours, key=cv2.contourArea)
 
+    # Find if largest contour is close to edges, indicating noise
     (x, y, w, h) = cv2.boundingRect(largest_contour)
 
-    # Create mask to surround digit
-    mask = np.zeros((h-y, w-x), dtype="uint8")
+    if x < limit or y < limit or w > cell.shape[0] - limit or h > cell.shape[0] - limit:
+        return None
 
-    
+    # processed_cell = processed_cell[x:x+w, y:y+h]
+
+    # Create mask to surround digit
+    mask = np.zeros(cell.shape, dtype="uint8")
 
     # Draw contour on mask
     cv2.drawContours(mask, [largest_contour], -1, 255, -1)
 
-    
-    mask = mask[y:y+h, x:x+w]
+    # mask = mask[y:y+h, x:x+w]
 
-    # # Calculate perecentage of mask that is filled
-    # (height, width) = cell.shape
-    # if (cv2.countNonZero(mask) / float(height * width)) < 0.05:
-    #     return None
+    # Calculate perecentage of mask that is filled
+    (height, width) = cell.shape
+    if (cv2.countNonZero(mask) / float(height * width)) < 0.05:
+        return None
 
     # Apply mask to initial cell
-    # digit = cv2.bitwise_and(cell, cell, mask=mask)
-    
-    cv2.imshow('none', mask)
-    cv2.waitKey(0)
-    
+    digit = cv2.bitwise_and(cell, cell, mask=mask)
 
-    return mask
+    # Final crop
+    side = max(w, h)
+    # Edge size of returned square
+    # Add margin
+    side = side + side // 5
+    start_y = y-((side-h)//2)
+    start_x = x-((side-w)//2)
+
+    # Calculatee cropped digit
+    digit = digit[start_y:start_y+side, start_x:start_x+side]
+
+    return digit
