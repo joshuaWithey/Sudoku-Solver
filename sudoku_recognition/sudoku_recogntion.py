@@ -49,7 +49,8 @@ def find_puzzle(image):
     approx = cv2.approxPolyDP(contours[0], 0.02 * peri, True)
     (x, y, w, h) = cv2.boundingRect(approx)
     ratio = w / float(h)
-    if len(approx) == 4 and ratio > 0.9 and ratio < 1.1:
+    if len(approx) == 4:
+        #  and ratio > 0.9 and ratio < 1.1:
         # Find corners of largest contour representing the sudoku grid
 
         # Bottom right corner of puzzle will have largest (x + y) value
