@@ -1,8 +1,7 @@
-from sudoku_recognition.sudoku_recogntion import find_puzzle, identify_cell, crop_puzzle
+from sudoku_recognition.sudoku_recogntion import find_puzzle, identify_cell, crop_puzzle, overlay_puzzle, solve_sudoku
 import cv2
 import numpy as np
 import tensorflow as tf
-from tensorflow import keras
 from keras.preprocessing.image import img_to_array
 
 model = tf.keras.models.load_model('digit_classifier.h5')
@@ -17,11 +16,10 @@ corners, processed_image = find_puzzle(image)
 # Crop and warp puzzle from frame
 cropped_image = crop_puzzle(processed_image, corners)
 
-cv2.imshow('image', cropped_image)
-cv2.waitKey(0)
-
 # Initialize 9 x 9 sudoku board
-board = np.zeros((9, 9), dtype='int')
+# Use 3d array to store the number in a cell, as well as whether
+# or not that number is given.
+board = np.zeros((9, 9, 2), dtype='int')
 
 # Calculate distance between each cell
 # Since we transform into a square, only need one side
@@ -49,7 +47,12 @@ for y in range(0, 9):
             digit = np.expand_dims(digit, axis=0)
 
             pred = model.predict(digit)
-            print(len(pred[0]))
-            board[y][x] = pred.argmax(axis=1) + 1
+            board[y][x][0] = pred.argmax(axis=1) + 1
+            board[y][x][1] = 1
 
-print(board)
+solve_sudoku(board)
+
+overlay = overlay_puzzle(image, board, cropped_image.shape[0], corners)
+
+cv2.imshow('overlay', overlay)
+cv2.waitKey(0)
