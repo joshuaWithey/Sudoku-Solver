@@ -1,8 +1,5 @@
-from tensorflow import keras
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelBinarizer
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D
@@ -11,9 +8,10 @@ from tensorflow.keras.layers import Activation
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Dropout
+from tensorflow.keras.datasets import mnist
 
 # import written images
-(train_X, train_y), (test_X, test_y) = keras.datasets.mnist.load_data()
+(train_X, train_y), (test_X, test_y) = mnist.load_data()
 
 # Import text images
 data = pd.read_csv('TMNIST_Data.csv')
@@ -45,7 +43,7 @@ train_data = train_data / 255
 le = LabelBinarizer()
 train_labels = le.fit_transform(train_labels)
 
-model = keras.Sequential()
+model = Sequential()
 inputShape = (28, 28, 1)
 
 model.add(Conv2D(32, (5, 5), padding="same",
@@ -76,4 +74,4 @@ model.compile(loss="categorical_crossentropy", optimizer='adam',
 model.fit(train_data, train_labels, epochs=10)
 
 # Serialize the model to disk
-model.save('digit_classifier.h5')
+model.save('utilites/digit_classifier.h5')

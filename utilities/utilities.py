@@ -1,8 +1,7 @@
 import cv2
 import numpy as np
 from skimage.segmentation import clear_border
-import tensorflow as tf
-from tensorflow import keras
+from keras.preprocessing.image import img_to_array
 
 
 # Helper function to determine if image is blurry
@@ -18,7 +17,7 @@ def distance_between(p1, p2):
     b = p1[1] - p1[1]
     return int(np.sqrt(a ** 2 + b ** 2))
 
-# Given an image of a sudoku board, return it cropped and straightened, as well as array of corners
+# Given an image of a sudoku board, return it processed, as well as array of corners
 
 
 def find_puzzle(image):
@@ -50,7 +49,7 @@ def find_puzzle(image):
     (x, y, w, h) = cv2.boundingRect(approx)
     ratio = w / float(h)
     if len(approx) == 4:
-        #  and ratio > 0.9 and ratio < 1.1:
+        # and ratio > 0.85 and ratio < 1.15:
         # Find corners of largest contour representing the sudoku grid
 
         # Bottom right corner of puzzle will have largest (x + y) value
@@ -125,15 +124,11 @@ def identify_cell(cell):
     if x < limit or y < limit or w > cell.shape[0] - limit or h > cell.shape[0] - limit:
         return None
 
-    # processed_cell = processed_cell[x:x+w, y:y+h]
-
     # Create mask to surround digit
     mask = np.zeros(cell.shape, dtype="uint8")
 
     # Draw contour on mask
     cv2.drawContours(mask, [largest_contour], -1, 255, -1)
-
-    # mask = mask[y:y+h, x:x+w]
 
     # Calculate perecentage of mask that is filled
     (height, width) = cell.shape
@@ -154,7 +149,126 @@ def identify_cell(cell):
     # Calculatee cropped digit
     digit = digit[start_y:start_y+side, start_x:start_x+side]
 
-    # cv2.imshow('Digit', digit)
-    # cv2.waitKey(0)
-
     return digit
+
+
+def overlay_puzzle(image, board, grid_size, corners):
+    try:
+        colour = (0, 255, 0)
+
+        # Draw overlay
+        overlay = np.zeros((grid_size, grid_size, 3), np.uint8)
+        border_pts = np.array([[0, 0], [grid_size, 0], [grid_size,
+                                                        grid_size], [0, grid_size]], np.int32)
+
+        # Draw polygon for border
+        cv2.polylines(overlay, [border_pts], True, colour, 3)
+
+        # Draw gridlines
+        cell_size = overlay.shape[0] // 9
+        for x in range(1, 9):
+            cv2.line(overlay, (0, x * cell_size),
+                    (grid_size, x * cell_size), colour, 1)
+            cv2.line(overlay, (x * cell_size, 0),
+                    (x * cell_size, grid_size), colour, 1)
+
+        # Draw digits onto overlay
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = float(cell_size / 50)
+        for x in range(0, 9):
+            for y in range(0, 9):
+                if board[y][x][1] == 0:
+                    text = str(board[y][x][0])
+                    text_size = cv2.getTextSize(text, font, scale, 4)[0]
+                    corner_x = x * cell_size + ((cell_size - text_size[0]) // 2)
+                    corner_y = y * cell_size + ((cell_size + text_size[1]) // 2)
+                    cv2.putText(overlay, text, (corner_x, corner_y),
+                                font, scale, colour, 4)
+
+        # Warp overlay onto original frame
+        pt1 = np.float32(border_pts)
+        pt2 = np.float32(corners)
+
+        overlay = cv2.warpPerspective(
+            overlay, cv2.getPerspectiveTransform(pt1, pt2), (image.shape[1], image.shape[0]))
+
+        # Add overlay to original image
+        added_image = cv2.addWeighted(image, 1, overlay, 1, 0)
+
+        return added_image
+    except:
+        return image
+
+def extract_board(image, model):
+    board = np.zeros((9, 9, 2), dtype='int')
+    try:
+        cell_size = image.shape[0] // 9
+        for y in range(0, 9):
+            for x in range(0, 9):
+                start_x = x * cell_size
+                start_y = y * cell_size
+                end_x = (x + 1) * cell_size
+                end_y = (y + 1) * cell_size
+
+                # Extract cell from board
+                cell = image[start_y:end_y, start_x:end_x]
+                digit = identify_cell(cell)
+            
+                if digit is not None:
+                    digit = cv2.resize(digit, (28, 28))
+                    digit = digit.astype("float") / 255
+                    digit = img_to_array(digit)
+                    digit = np.expand_dims(digit, axis=0)
+
+                    pred = model.predict(digit)
+                    board[y][x][0] = pred.argmax(axis=1)[0] + 1
+                    board[y][x][1] = 1
+        return board
+    except:
+        return None
+
+
+def is_valid(board, number, position):
+    # Check row
+    for i in range(0, 9):
+        if board[position[0]][i][0] == number and position[1] != i:
+            return False
+
+    # Check column
+    for i in range(0, 9):
+        if board[i][position[1]][0] == number and position[0] != i:
+            return False
+
+    # Check square
+    x_start = position[1] // 3 * 3
+    y_start = position[0] // 3 * 3
+    for i in range(y_start, y_start + 3):
+        for j in range(x_start, x_start + 3):
+            if board[i][j][0] == number and (i, j) != position:
+                return False
+    return True
+
+
+def find_empty(board):
+    for i in range(0, 9):
+        for j in range(0, 9):
+            if board[i][j][0] == 0:
+                return [i, j]
+    return None
+
+
+# Given a sudoku board, either return completed board
+# or none if impossible
+def solve_sudoku(board):
+    empty = find_empty(board)
+    if not empty:
+        return True
+    else:
+        row, col = empty
+    for i in range(1, 10):
+        if is_valid(board, i, (row, col)):
+            board[row][col][0] = i
+            if solve_sudoku(board):
+                return True
+            board[row][col][0] = 0
+    return False
