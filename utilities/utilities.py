@@ -168,13 +168,13 @@ def overlay_puzzle(image, board, grid_size, corners):
             for y in range(0, 9):
                 if board[y][x][1] == 0:
                     text = str(board[y][x][0])
-                    text_size = cv2.getTextSize(text, font, scale, 4)[0]
+                    text_size = cv2.getTextSize(text, font, scale, 2)[0]
                     corner_x = x * cell_size + \
                         ((cell_size - text_size[0]) // 2)
                     corner_y = y * cell_size + \
                         ((cell_size + text_size[1]) // 2)
                     cv2.putText(overlay, text, (corner_x, corner_y),
-                                font, scale, colour, 4)
+                                font, scale, colour, 2)
 
         # Warp overlay onto original frame
         pt1 = np.float32(border_pts)
