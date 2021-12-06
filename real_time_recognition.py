@@ -35,7 +35,7 @@ while True:
             cropped_frame = crop_puzzle(processed_frame, corners)
             cv2.imshow('frame', cropped_frame)
             cv2.waitKey(0)
-            cv2.imwrite('output/sample.jpg', cropped_frame)
+            cv2.imwrite('output/sample.png', cropped_frame)
             break
             board = extract_board(cropped_frame, interpreter,
                                   input_details, output_details)

@@ -2,7 +2,6 @@ import cv2
 import numpy as np
 from skimage.segmentation import clear_border
 from keras.preprocessing.image import img_to_array
-from sudoku import Sudoku
 
 
 # Helper function to determine if image is blurry
@@ -35,7 +34,7 @@ def find_puzzle(image):
 
     # Threshold
     processed_image = cv2.adaptiveThreshold(
-        processed_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 3, 2)
+        processed_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 7, 2)
 
     # Find contours to identify edges
     contours, _ = cv2.findContours(
@@ -102,6 +101,9 @@ def crop_puzzle(image, corners):
 
 
 def identify_cell(cell):
+
+    # cv2.imshow('cell', cell)
+    # cv2.waitKey(0)
     side = cell.shape[0]
     border = int(side * 0.1)
 
@@ -153,8 +155,7 @@ def identify_cell(cell):
     # # Calculate cropped digit
     # digit = digit[start_y:start_y+side, start_x:start_x+side]
 
-    cv2.imshow('cell', digit)
-    cv2.waitKey(0)
+    
 
     return digit
 
@@ -208,40 +209,91 @@ def overlay_puzzle(image, board, grid_size, corners):
     except:
         return image
 
+# Helper functions for sorting
+def smallest_y(elem):
+    x, y, w, h = cv2.boundingRect(elem)
+    return y
+
+def smallest_x(elem):
+    x, y, w, h = cv2.boundingRect(elem)
+    return x
 
 def extract_board(image, interpreter, input_details, output_details):
-    try:
-        board = np.zeros((9, 9, 2), dtype='int')
-        cell_size = image.shape[0] // 9
-        for y in range(0, 9):
-            for x in range(0, 9):
-                start_x = x * cell_size
-                start_y = y * cell_size
-                end_x = (x + 1) * cell_size
-                end_y = (y + 1) * cell_size
+    # Init board
+    board = np.zeros((9, 9, 2), dtype='int')
+    cell_area_est = (image.shape[0] // 9) * (image.shape[0] // 9)
+    limit = cell_area_est // 5
+    print(cell_area_est)
+    print(limit)
 
-                # Extract cell from board
-                cell = image[start_y:end_y, start_x:end_x]
-                digit = identify_cell(cell)
+    for num in (5, 7, 9, 11):
+        print(num)
+        # Find contours of each cell
+        # Close horizontal and vertical lines
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (num, num))
+        processed_image = cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
 
-                if digit is not None:
-                    # cv2.imshow('digit', digit)
-                    # cv2.waitKey(0)
-                    digit = cv2.resize(digit, (28, 28))
-                    digit = digit.astype("float") / 255
-                    digit = img_to_array(digit)
-                    digit = np.expand_dims(digit, axis=0)
+        # Invert image so its white on black
+        processed_image = cv2.bitwise_not(processed_image)
 
-                    interpreter.set_tensor(input_details[0]['index'], digit)
-                    interpreter.invoke()
-                    output_data = interpreter.get_tensor(
-                        output_details[0]['index'])
+        # Find outline contours
+        contours, _ = cv2.findContours(processed_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Not enough squares found
+        if len(contours) < 81:
+            if num == 11:
+                return None 
+            else:
+                continue
+        
+        # Sort contours and only use first 81
+        contours = sorted(contours, key=cv2.contourArea, reverse=True)
+        contours = contours[:81]
 
-                    board[y][x][0] = np.argmax(output_data) + 1
-                    board[y][x][1] = 1
-        return board
-    except:
-        return None
+        # Check contour area
+        for c in contours:
+            area = cv2.contourArea(c)
+            print(area)
+            if area < cell_area_est - limit or area > cell_area_est + limit:
+                if num == 11:
+                    return None
+                else:
+                    break
+
+
+    # Sort contours into top to bottom
+    contours = sorted(contours, key=smallest_y)
+    print(len(contours))
+    # Sort contours into left to right
+    start = 0
+    while start < 81:
+        contours[start:start+9] = sorted(contours[start:start+9], key=smallest_x)
+        start += 9
+    
+    # Fill board
+    for j in range(0, 9):
+        for i in range(0, 9):
+            x, y, w, h = cv2.boundingRect(contours[j*9+i])
+
+            # Extract cell from board
+            cell = image[y:y+h, x:x+h]
+            digit = identify_cell(cell)
+
+            if digit is not None:
+                digit = cv2.resize(digit, (28, 28))
+                digit = digit.astype("float") / 255
+                digit = img_to_array(digit)
+                digit = np.expand_dims(digit, axis=0)
+
+                interpreter.set_tensor(input_details[0]['index'], digit)
+                interpreter.invoke()
+                output_data = interpreter.get_tensor(
+                    output_details[0]['index'])
+
+                board[j][i][0] = np.argmax(output_data) + 1
+                board[j][i][1] = 1
+    return board
+    
 
 
 def is_valid(board, number, position):

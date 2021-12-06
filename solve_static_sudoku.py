@@ -22,15 +22,13 @@ corners, processed_image = find_puzzle(image)
 
 # Crop and warp puzzle from frame
 cropped_image = crop_puzzle(processed_image, corners)
-
-# Calculate distance between each cell
-# Since we transform into a square, only need one side
-cell_size = cropped_image.shape[0] // 9
+cv2.imshow('cropped', cropped_image)
+cv2.waitKey(0)
 
 board = extract_board(cropped_image, interpreter,
                       input_details, output_details)
 
-solve_sudoku(board)
+# solve_sudoku(board)
 
 final_image = overlay_puzzle(image, board, cropped_image.shape[0], corners)
 
