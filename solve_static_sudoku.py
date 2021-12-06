@@ -15,20 +15,21 @@ output_details = interpreter.get_output_details()
 input_shape = input_details[0]['shape']
 
 # Import image
-image = cv2.imread('test_images/sudoku2.jpg')
+image = cv2.imread('test_images/sudoku1.jpg')
 
 # Find corners of puzzle out of frame
 corners, processed_image = find_puzzle(image)
 
 # Crop and warp puzzle from frame
 cropped_image = crop_puzzle(processed_image, corners)
-cv2.imshow('cropped', cropped_image)
-cv2.waitKey(0)
 
 board = extract_board(cropped_image, interpreter,
                       input_details, output_details)
 
-# solve_sudoku(board)
+
+solve_sudoku(board)
+
+print(board)
 
 final_image = overlay_puzzle(image, board, cropped_image.shape[0], corners)
 

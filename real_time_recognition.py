@@ -33,16 +33,14 @@ while True:
             # and not puzzle_solved:
             # Extract digits from image
             cropped_frame = crop_puzzle(processed_frame, corners)
-            cv2.imshow('frame', cropped_frame)
-            cv2.waitKey(0)
-            cv2.imwrite('output/sample.png', cropped_frame)
-            break
             board = extract_board(cropped_frame, interpreter,
                                   input_details, output_details)
-            # break
-            if board is not None:
-                # solve_sudoku(board)
-                puzzle_solved = True
+            print(board)
+            break
+            # if board is not None:
+
+            #     if solve_sudoku(board):
+            #         puzzle_solved = True
 
     if puzzle_solved:
         frame = overlay_puzzle(frame, board, cropped_frame.shape[0], corners)
