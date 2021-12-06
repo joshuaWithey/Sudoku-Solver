@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-from skimage.segmentation import clear_border
 from keras.preprocessing.image import img_to_array
 
 
@@ -10,16 +9,12 @@ def variance_of_laplacian(image):
     return cv2.Laplacian(image, cv2.CV_64F).var()
 
 # Helper function to compute distance between two points
-
-
 def distance_between(p1, p2):
     a = p1[0] - p2[0]
     b = p1[1] - p1[1]
     return int(np.sqrt(a ** 2 + b ** 2))
 
 # Given an image of a sudoku board, return it processed, as well as array of corners
-
-
 def find_puzzle(image):
     # If image too blurry
     if variance_of_laplacian(image) < 200:
@@ -70,7 +65,9 @@ def find_puzzle(image):
     else:
         return None, None
 
-
+# Given an image containing a sudoku and the corners
+# of said puzzle, return a cropped and warped top down
+# view.
 def crop_puzzle(image, corners):
     # Crop and warp image
     # Store points of corners
@@ -91,15 +88,15 @@ def crop_puzzle(image, corners):
         [side - 1, side - 1],
         [0, side - 1]], dtype="float32")
 
-    # Crop and warp original and grayscale images
-
+    # Crop and warp original image
     image = cv2.warpPerspective(
         image, cv2.getPerspectiveTransform(pt1, pt2), (side, side))
 
     # Return image
     return(image)
 
-
+# Given a sudoku cell, either return none if cell is empty
+# or a cropped, square image for ML algorithm.
 def identify_cell(cell):
     side = cell.shape[0]
     border = int(side * 0.1)
@@ -118,14 +115,6 @@ def identify_cell(cell):
     # Find largest contour to determine if a number
     largest_contour = max(contours, key=cv2.contourArea)
 
-    # # Find if largest contour is close to edges, indicating noise
-
-    # if x < limit or y < limit or w > cell.shape[0] - limit or h > cell.shape[0] - limit:
-    #     # cv2.imshow('cell', cell)
-    #     # cv2.waitKey(0)
-    #     # print('Limit')
-    #     return None
-
     # Create mask to surround digit
     mask = np.zeros(cell.shape, dtype="uint8")
 
@@ -140,36 +129,20 @@ def identify_cell(cell):
     # Apply mask to initial cell
     digit = cv2.bitwise_and(cell, cell, mask=mask)
 
-    # (x, y, w, h) = cv2.boundingRect(largest_contour)
-
-    # Final crop
+    # Final crop to make square
     w = cell.shape[1]
     h = cell.shape[0]
-    max_side = max(w, h)
     if w > h:
         digit = digit[0:h, (w-h)//2:(w-h)//2 + h]
     else:
         digit = digit[(h-w)//2:(h-w)//2 + w, 0:w]
 
-    # side = max(cell.shape[0], cell.shape[1])
-    # # Edge size of returned square
-    # # Add margin
-    # side = side + side // 5
-    # start_y = y-((side-h)//2)
-    # start_x = x-((side-w)//2)
-
-    # # Calculate cropped digit
-    # digit = digit[start_y:start_y+side, start_x:start_x+side]
-
-    # print(digit.shape)
-    # cv2.imshow('digit', digit)
-    # cv2.waitKey(0)
-
     return digit
 
-
+# Overlay solved sudoku board onto original image
 def overlay_puzzle(image, board, grid_size, corners):
     try:
+        # Set color to green
         colour = (0, 255, 0)
 
         # Draw overlay
@@ -218,8 +191,6 @@ def overlay_puzzle(image, board, grid_size, corners):
         return image
 
 # Helper functions for sorting
-
-
 def smallest_y(elem):
     x, y, w, h = cv2.boundingRect(elem)
     return y
@@ -229,18 +200,18 @@ def smallest_x(elem):
     x, y, w, h = cv2.boundingRect(elem)
     return x
 
-
+# Extract sudoku board from cropped image
 def extract_board(image, interpreter, input_details, output_details):
     # Init board
     board = np.zeros((9, 9, 2), dtype='int')
+    
+    # Calculate estimate for what each cell area should be
     cell_area_est = (image.shape[0] // 9) * (image.shape[0] // 9)
     limit = cell_area_est // 5
 
     # Try multiple kernel sizes for closing grid lines
     for num in (5, 7, 9, 11):
-        # Find contours of each cell
         # Close horizontal and vertical lines
-        # Fix horizontal and vertical lines
         vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, num))
         processed_image = cv2.morphologyEx(
             image, cv2.MORPH_CLOSE, vertical_kernel)
@@ -251,14 +222,11 @@ def extract_board(image, interpreter, input_details, output_details):
         # Invert image so its white on black
         processed_image = cv2.bitwise_not(processed_image)
 
-        cv2.imshow('test', processed_image)
-        cv2.waitKey(0)
-
         # Find outline contours
         contours, _ = cv2.findContours(
             processed_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        # Not enough squares found
+        # Check number of contours found, should be at least 81 for 81 sudoku cells
         if len(contours) < 81:
             if num == 11:
                 return None
@@ -270,10 +238,9 @@ def extract_board(image, interpreter, input_details, output_details):
         contours = contours[:81]
 
         check = True
-        # Check contour area
+        # Check contour area is within estimated range
         for c in contours:
             area = cv2.contourArea(c)
-            print(area)
             if area < cell_area_est - limit or area > cell_area_est + limit:
                 check = False
                 if num == 11:
@@ -295,16 +262,13 @@ def extract_board(image, interpreter, input_details, output_details):
     # Fill board
     for j in range(0, 9):
         for i in range(0, 9):
+            # Extract cell using contours
             x, y, w, h = cv2.boundingRect(contours[j*9+i])
-
-            # Extract cell from board
             cell = image[y:y+h, x:x+w]
             digit = identify_cell(cell)
 
             if digit is not None:
                 digit = cv2.resize(digit, (28, 28))
-                cv2.imshow('digit', digit)
-                cv2.waitKey(0)
                 digit = digit.astype("float") / 255
                 digit = img_to_array(digit)
                 digit = np.expand_dims(digit, axis=0)
@@ -318,7 +282,7 @@ def extract_board(image, interpreter, input_details, output_details):
                 board[j][i][1] = 1
     return board
 
-
+# Checks if a sudoku move is valid
 def is_valid(board, number, position):
     # Check row
     for i in range(0, 9):
@@ -339,7 +303,7 @@ def is_valid(board, number, position):
                 return False
     return True
 
-
+# Finds an empty sudoku cell
 def find_empty(board):
     for i in range(0, 9):
         for j in range(0, 9):
@@ -347,7 +311,7 @@ def find_empty(board):
                 return [i, j]
     return None
 
-
+# Recursively solve sudoku
 def solve_sudoku(board):
     empty = find_empty(board)
     if not empty:
@@ -361,19 +325,3 @@ def solve_sudoku(board):
                 return True
             board[row][col][0] = 0
     return False
-
-# board = [[8, 0, 0, 0, 1, 0, 0, 0, 9],
-#          [0, 5, 0, 8, 0, 7, 0, 1, 0],
-#          [0, 0, 4, 0, 9, 0, 7, 0, 0],
-#          [0, 6, 0, 7, 0, 1, 0, 2, 0],
-#          [5, 0, 8, 0, 6, 0, 1, 0, 7],
-#          [0, 1, 0, 5, 0, 2, 0, 9, 0],
-#          [0, 0, 7, 0, 4, 0, 6, 0, 0],
-#          [0, 8, 0, 3, 0, 9, 0, 4, 0],
-#          [3, 0, 0, 0, 5, 0, 0, 0, 8]]
-
-# puzzle = Sudoku(3, 3, board=board)
-
-# puzzle.solve().show_full()
-
-# print(puzzle)

@@ -17,7 +17,9 @@ input_shape = input_details[0]['shape']
 # Import webcam
 capture = cv2.VideoCapture(0)
 
-# Counter for how long a puzzle was
+# Counter for how long a puzzle was not found
+puzzle_not_found = 0
+# Boolean for whether a puzzle is solved, saves on repeatedly running predictions
 puzzle_solved = False
 
 if not capture.isOpened():
@@ -26,36 +28,33 @@ if not capture.isOpened():
 while True:
     ret, frame = capture.read()
     # Find corners of puzzle out of frame
-    c = cv2.waitKey(1)
     corners, processed_frame = find_puzzle(frame)
-    if c == 32:
-        if corners is not None:
-            # and not puzzle_solved:
+    
+    if corners is not None:
+        puzzle_not_found = 0
+        if not puzzle_solved:
             # Extract digits from image
             cropped_frame = crop_puzzle(processed_frame, corners)
             board = extract_board(cropped_frame, interpreter,
-                                  input_details, output_details)
-            print(board)
-            break
-            # if board is not None:
-
-            #     if solve_sudoku(board):
-            #         puzzle_solved = True
+                                    input_details, output_details)            
+            
+            if board is not None:
+                if solve_sudoku(board):
+                    puzzle_solved = True
+    else:
+        puzzle_not_found += 1
+        if puzzle_not_found > 10:
+            puzzle_solved = False
 
     if puzzle_solved:
         frame = overlay_puzzle(frame, board, cropped_frame.shape[0], corners)
 
-    if processed_frame is not None:
-        cv2.imshow('Input', processed_frame)
-    else:
-        cv2.imshow('Input', frame)
+    cv2.imshow('Input', frame)
 
+    c = cv2.waitKey(1)
     if c == 27:
         break
 
 
 capture.release()
 cv2.destroyAllWindows()
-
-# cv2.imshow('cropped', cropped_frame)
-# cv2.waitKey(0)
