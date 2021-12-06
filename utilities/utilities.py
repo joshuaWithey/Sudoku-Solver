@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 from skimage.segmentation import clear_border
 from keras.preprocessing.image import img_to_array
+from sudoku import Sudoku
 
 
 # Helper function to determine if image is blurry
@@ -22,19 +23,19 @@ def distance_between(p1, p2):
 
 def find_puzzle(image):
     # If image too blurry
-    if variance_of_laplacian(image) < 100:
+    if variance_of_laplacian(image) < 200:
         return None, None
 
     # Apply grayscale
     gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     # Guassian filter
-    processed_image = cv2.GaussianBlur(gray_image, (9, 9), 2)
-    processed_image = cv2.adaptiveThreshold(
-        processed_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    processed_image = cv2.GaussianBlur(
+        gray_image, (7, 7), 0)
 
-    # Invert image
-    processed_image = cv2.bitwise_not(processed_image)
+    # Threshold
+    processed_image = cv2.adaptiveThreshold(
+        processed_image, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 3, 2)
 
     # Find contours to identify edges
     contours, _ = cv2.findContours(
@@ -101,15 +102,15 @@ def crop_puzzle(image, corners):
 
 
 def identify_cell(cell):
-    limit = cell.shape[0] // 10
+    side = cell.shape[0]
+    border = int(side * 0.1)
 
-    processed_cell = cv2.threshold(cell, 128, 255, cv2.THRESH_BINARY)[1]
-
-    processed_cell = clear_border(cell)
+    # remove outer 10% of cell
+    cell = cell[border:side-border, border:side-border]
 
     # Find contours to find black square
     contours, _ = cv2.findContours(
-        processed_cell, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        cell, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     # If no contours found, empty cell
     if len(contours) == 0:
@@ -118,11 +119,14 @@ def identify_cell(cell):
     # Find largest contour to determine if a number
     largest_contour = max(contours, key=cv2.contourArea)
 
-    # Find if largest contour is close to edges, indicating noise
-    (x, y, w, h) = cv2.boundingRect(largest_contour)
+    # # Find if largest contour is close to edges, indicating noise
+    # (x, y, w, h) = cv2.boundingRect(largest_contour)
 
-    if x < limit or y < limit or w > cell.shape[0] - limit or h > cell.shape[0] - limit:
-        return None
+    # if x < limit or y < limit or w > cell.shape[0] - limit or h > cell.shape[0] - limit:
+    #     # cv2.imshow('cell', cell)
+    #     # cv2.waitKey(0)
+    #     # print('Limit')
+    #     return None
 
     # Create mask to surround digit
     mask = np.zeros(cell.shape, dtype="uint8")
@@ -138,16 +142,19 @@ def identify_cell(cell):
     # Apply mask to initial cell
     digit = cv2.bitwise_and(cell, cell, mask=mask)
 
-    # Final crop
-    side = max(w, h)
-    # Edge size of returned square
-    # Add margin
-    side = side + side // 5
-    start_y = y-((side-h)//2)
-    start_x = x-((side-w)//2)
+    # # Final crop
+    # side = max(w, h)
+    # # Edge size of returned square
+    # # Add margin
+    # side = side + side // 5
+    # start_y = y-((side-h)//2)
+    # start_x = x-((side-w)//2)
 
-    # Calculatee cropped digit
-    digit = digit[start_y:start_y+side, start_x:start_x+side]
+    # # Calculate cropped digit
+    # digit = digit[start_y:start_y+side, start_x:start_x+side]
+
+    cv2.imshow('cell', digit)
+    cv2.waitKey(0)
 
     return digit
 
@@ -168,9 +175,9 @@ def overlay_puzzle(image, board, grid_size, corners):
         cell_size = overlay.shape[0] // 9
         for x in range(1, 9):
             cv2.line(overlay, (0, x * cell_size),
-                    (grid_size, x * cell_size), colour, 1)
+                     (grid_size, x * cell_size), colour, 1)
             cv2.line(overlay, (x * cell_size, 0),
-                    (x * cell_size, grid_size), colour, 1)
+                     (x * cell_size, grid_size), colour, 1)
 
         # Draw digits onto overlay
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -180,8 +187,10 @@ def overlay_puzzle(image, board, grid_size, corners):
                 if board[y][x][1] == 0:
                     text = str(board[y][x][0])
                     text_size = cv2.getTextSize(text, font, scale, 4)[0]
-                    corner_x = x * cell_size + ((cell_size - text_size[0]) // 2)
-                    corner_y = y * cell_size + ((cell_size + text_size[1]) // 2)
+                    corner_x = x * cell_size + \
+                        ((cell_size - text_size[0]) // 2)
+                    corner_y = y * cell_size + \
+                        ((cell_size + text_size[1]) // 2)
                     cv2.putText(overlay, text, (corner_x, corner_y),
                                 font, scale, colour, 4)
 
@@ -199,9 +208,10 @@ def overlay_puzzle(image, board, grid_size, corners):
     except:
         return image
 
-def extract_board(image, model):
-    board = np.zeros((9, 9, 2), dtype='int')
+
+def extract_board(image, interpreter, input_details, output_details):
     try:
+        board = np.zeros((9, 9, 2), dtype='int')
         cell_size = image.shape[0] // 9
         for y in range(0, 9):
             for x in range(0, 9):
@@ -213,15 +223,21 @@ def extract_board(image, model):
                 # Extract cell from board
                 cell = image[start_y:end_y, start_x:end_x]
                 digit = identify_cell(cell)
-            
+
                 if digit is not None:
+                    # cv2.imshow('digit', digit)
+                    # cv2.waitKey(0)
                     digit = cv2.resize(digit, (28, 28))
                     digit = digit.astype("float") / 255
                     digit = img_to_array(digit)
                     digit = np.expand_dims(digit, axis=0)
 
-                    pred = model.predict(digit)
-                    board[y][x][0] = pred.argmax(axis=1)[0] + 1
+                    interpreter.set_tensor(input_details[0]['index'], digit)
+                    interpreter.invoke()
+                    output_data = interpreter.get_tensor(
+                        output_details[0]['index'])
+
+                    board[y][x][0] = np.argmax(output_data) + 1
                     board[y][x][1] = 1
         return board
     except:
@@ -257,8 +273,6 @@ def find_empty(board):
     return None
 
 
-# Given a sudoku board, either return completed board
-# or none if impossible
 def solve_sudoku(board):
     empty = find_empty(board)
     if not empty:
@@ -272,3 +286,19 @@ def solve_sudoku(board):
                 return True
             board[row][col][0] = 0
     return False
+
+# board = [[8, 0, 0, 0, 1, 0, 0, 0, 9],
+#          [0, 5, 0, 8, 0, 7, 0, 1, 0],
+#          [0, 0, 4, 0, 9, 0, 7, 0, 0],
+#          [0, 6, 0, 7, 0, 1, 0, 2, 0],
+#          [5, 0, 8, 0, 6, 0, 1, 0, 7],
+#          [0, 1, 0, 5, 0, 2, 0, 9, 0],
+#          [0, 0, 7, 0, 4, 0, 6, 0, 0],
+#          [0, 8, 0, 3, 0, 9, 0, 4, 0],
+#          [3, 0, 0, 0, 5, 0, 0, 0, 8]]
+
+# puzzle = Sudoku(3, 3, board=board)
+
+# puzzle.solve().show_full()
+
+# print(puzzle)
