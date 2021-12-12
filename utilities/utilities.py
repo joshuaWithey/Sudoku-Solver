@@ -9,12 +9,16 @@ def variance_of_laplacian(image):
     return cv2.Laplacian(image, cv2.CV_64F).var()
 
 # Helper function to compute distance between two points
+
+
 def distance_between(p1, p2):
     a = p1[0] - p2[0]
     b = p1[1] - p1[1]
     return int(np.sqrt(a ** 2 + b ** 2))
 
 # Given an image of a sudoku board, return it processed, as well as array of corners
+
+
 def find_puzzle(image):
     # If image too blurry
     if variance_of_laplacian(image) < 200:
@@ -68,6 +72,8 @@ def find_puzzle(image):
 # Given an image containing a sudoku and the corners
 # of said puzzle, return a cropped and warped top down
 # view.
+
+
 def crop_puzzle(image, corners):
     # Crop and warp image
     # Store points of corners
@@ -97,6 +103,8 @@ def crop_puzzle(image, corners):
 
 # Given a sudoku cell, either return none if cell is empty
 # or a cropped, square image for ML algorithm.
+
+
 def identify_cell(cell):
     side = cell.shape[0]
     border = int(side * 0.1)
@@ -140,6 +148,8 @@ def identify_cell(cell):
     return digit
 
 # Overlay solved sudoku board onto original image
+
+
 def overlay_puzzle(image, board, grid_size, corners):
     try:
         # Set color to green
@@ -191,6 +201,8 @@ def overlay_puzzle(image, board, grid_size, corners):
         return image
 
 # Helper functions for sorting
+
+
 def smallest_y(elem):
     x, y, w, h = cv2.boundingRect(elem)
     return y
@@ -201,16 +213,18 @@ def smallest_x(elem):
     return x
 
 # Extract sudoku board from cropped image
+
+
 def extract_board(image, interpreter, input_details, output_details):
     # Init board
     board = np.zeros((9, 9, 2), dtype='int')
-    
+
     # Calculate estimate for what each cell area should be
     cell_area_est = (image.shape[0] // 9) * (image.shape[0] // 9)
     limit = cell_area_est // 5
 
     # Try multiple kernel sizes for closing grid lines
-    for num in (5, 7, 9, 11):
+    for num in (1, 3, 5, 7, 9, 11, 13):
         # Close horizontal and vertical lines
         vertical_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (1, num))
         processed_image = cv2.morphologyEx(
@@ -222,13 +236,18 @@ def extract_board(image, interpreter, input_details, output_details):
         # Invert image so its white on black
         processed_image = cv2.bitwise_not(processed_image)
 
+        cv2.imshow('processed', processed_image)
+        cv2.waitKey(0)
+
         # Find outline contours
         contours, _ = cv2.findContours(
             processed_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
+        print('Len contours: ', len(contours))
+
         # Check number of contours found, should be at least 81 for 81 sudoku cells
         if len(contours) < 81:
-            if num == 11:
+            if num == 13:
                 return None
             else:
                 continue
@@ -243,7 +262,7 @@ def extract_board(image, interpreter, input_details, output_details):
             area = cv2.contourArea(c)
             if area < cell_area_est - limit or area > cell_area_est + limit:
                 check = False
-                if num == 11:
+                if num == 13:
                     return None
                 else:
                     break
@@ -283,6 +302,8 @@ def extract_board(image, interpreter, input_details, output_details):
     return board
 
 # Checks if a sudoku move is valid
+
+
 def is_valid(board, number, position):
     # Check row
     for i in range(0, 9):
@@ -304,6 +325,8 @@ def is_valid(board, number, position):
     return True
 
 # Finds an empty sudoku cell
+
+
 def find_empty(board):
     for i in range(0, 9):
         for j in range(0, 9):
@@ -312,6 +335,8 @@ def find_empty(board):
     return None
 
 # Recursively solve sudoku
+
+
 def solve_sudoku(board):
     empty = find_empty(board)
     if not empty:
