@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Sudoku Solver</title>
+    <script src="js/utils.js" type="text/javascript"></script>
+    <script src="js/math.js" type-="text/javascript"></script>
+    <script
+      async
+      src="js/opencv.js"
+      type="text/javascript"
+      onload="openCvReady();"
+    ></script>
+  </head>
+  <body>
+    <h2>Sudoku Solver</h2>
+    <canvas id="canvasOutput"></canvas>
+    <video id="video" width="1280" height="960"></video>
+    <script type="text/javascript">
+      function openCvReady() {
+        cv["onRuntimeInitialized"] = () => {
+          let video = document.getElementById("video"); // video is the id of video tag
+          navigator.mediaDevices
+            .getUserMedia({ video: true, audio: false })
+            .then(function (stream) {
+              video.srcObject = stream;
+              video.play();
+            })
+            .catch(function (err) {
+              console.log("An error occurred! " + err);
+            });
+          let src = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+          let dst = new cv.Mat(video.height, video.width, cv.CV_8UC4);
+          let processed = new cv.Mat();
+          let corners;
+          let puzzleNotFound = 0;
+          let puzzleSolved = false;
+          const cap = new cv.VideoCapture(video);
+          const FPS = 24;
+          function processVideo() {
+            let begin = Date.now();
+            cap.read(src);
+            src.copyTo(dst);
+            dst = processImage(src, cv);
+            //corners = findCorners(processed, cv);
+            if (corners != null) {
+              puzzleNotFound = 0;
+              //dst = cropPuzzle(processed, corners, cv);
+              // board = extractBoard(processed, cv);
+              // if (board != null) {
+              //   puzzleSolved = true;
+              // }
+              if (puzzleSolved) {
+                //dst = overlayPuzzle(src, board, dst.rows, corners, cv);
+              }
+              corners.delete;
+            } else {
+              puzzleNotFound += 1;
+              if (puzzleNotFound > 10) {
+                puzzleSolved = false;
+              }
+            }
+
+            cv.imshow("canvasOutput", dst);
+            // schedule next one.
+            setTimeout(processVideo, 0);
+          }
+          // schedule first one.
+          setTimeout(processVideo, 0);
+        };
+      }
+    </script>
+  </body>
+</html>

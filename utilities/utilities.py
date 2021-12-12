@@ -13,7 +13,7 @@ def variance_of_laplacian(image):
 
 def distance_between(p1, p2):
     a = p1[0] - p2[0]
-    b = p1[1] - p1[1]
+    b = p1[1] - p2[1]
     return int(np.sqrt(a ** 2 + b ** 2))
 
 # Given an image of a sudoku board, return it processed, as well as array of corners
@@ -45,10 +45,7 @@ def find_puzzle(image):
     # Check if contour is square
     peri = cv2.arcLength(contours[0], True)
     approx = cv2.approxPolyDP(contours[0], 0.02 * peri, True)
-    (x, y, w, h) = cv2.boundingRect(approx)
-    ratio = w / float(h)
     if len(approx) == 4:
-        # and ratio > 0.85 and ratio < 1.15:
         # Find corners of largest contour representing the sudoku grid
 
         # Bottom right corner of puzzle will have largest (x + y) value
