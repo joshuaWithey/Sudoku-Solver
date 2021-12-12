@@ -9,12 +9,13 @@ from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import Dense
 from tensorflow.keras.layers import Dropout
 from tensorflow.keras.datasets import mnist
+import tensorflowjs as tfjs
 
 # import written images
 (train_X, train_y), (test_X, test_y) = mnist.load_data()
 
 # Import text images
-data = pd.read_csv('TMNIST_Data.csv')
+data = pd.read_csv('utilities/TMNIST_Data.csv')
 
 # Extract labels
 train_labels = np.array(data.pop('labels'))
@@ -74,4 +75,5 @@ model.compile(loss="categorical_crossentropy", optimizer='adam',
 model.fit(train_data, train_labels, epochs=10)
 
 # Serialize the model to disk
-model.save('utilites/digit_classifier.h5')
+model.save('utilities/digit_classifier.h5')
+tfjs.converters.save_keras_model(model, 'output')

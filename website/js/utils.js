@@ -1,27 +1,123 @@
-function processImage(src, cv) {
-  let dst = new cv.Mat();
+let width = 0;
+let height = 0;
+// whether streaming video from the camera.
+// Import keras model
+let streaming = false;
+let video = document.getElementById("video");
+let stream = null;
+let cap = null;
+let src = null;
+let dst = null;
+let output = null;
+let corners = null;
+let processedDst = null;
+let croppedDst = null;
+let puzzleNotFound = 0;
+let puzzleSolved = false;
+function startCamera() {
+  if (streaming) return;
+  navigator.mediaDevices
+    .getUserMedia({ video: true, audio: false })
+    .then(function (s) {
+      stream = s;
+      video.srcObject = s;
+      video.play();
+    })
+    .catch(function (err) {
+      console.log("An error occured! " + err);
+    });
+
+  video.addEventListener(
+    "canplay",
+    function (ev) {
+      if (!streaming) {
+        height = video.videoHeight;
+        width = video.videoWidth;
+        video.setAttribute("width", width);
+        video.setAttribute("height", height);
+        streaming = true;
+        cap = new cv.VideoCapture(video);
+      }
+      startVideoProcessing();
+    },
+    false
+  );
+}
+async function tensorFlow() {
+  const model = await tf.loadLayersModel("resources/model.json");
+}
+function startVideoProcessing() {
+  tensorFlow();
+  if (!streaming) {
+    console.warn("Please startup your webcam");
+    return;
+  }
+  stopVideoProcessing();
+  src = new cv.Mat(height, width, cv.CV_8UC4);
+  dst = new cv.Mat(height, width, cv.CV_8UC4);
+  processedDst = new cv.Mat(height, width, cv.CV_8UC4);
+  requestAnimationFrame(processVideo);
+}
+function processVideo() {
+  cap.read(src);
+  let result = src;
+  let processed = processImage(src);
+  let corners = findCorners(processed);
+  if (corners != null) {
+    puzzleNotFound = 0;
+    if (!puzzleSolved) {
+      let cropped = cropPuzzle(processed, corners);
+      board = extractBoard(cropped);
+      if (board != null) {
+        //Solve puzzle
+        puzzleSolved = true;
+      }
+    }
+  } else {
+    puzzleNotFound += 1;
+    if (puzzleNotFound > 10) {
+      puzzleSolved = false;
+    }
+  }
+  if (puzzleSolved) {
+    result = overlayPuzzle(src, board, dst.rows, corners);
+  }
+  cv.imshow("canvasOutput", result);
+  requestAnimationFrame(processVideo);
+}
+function stopVideoProcessing() {
+  if (src != null && !src.isDeleted()) src.delete();
+  if (dst != null && !dst.isDeleted()) dstC1.delete();
+}
+function opencvIsReady() {
+  console.log("OpenCV.js is ready");
+  info.innerHTML = "OpenCV.js is ready";
+  startCamera();
+}
+
+function processImage(src) {
   // Grayscale
-  cv.cvtColor(src, dst, cv.COLOR_RGBA2GRAY);
+  cv.cvtColor(src, processedDst, cv.COLOR_RGBA2GRAY);
 
   // Guassian filter
   let ksize = new cv.Size(5, 5);
-  cv.GaussianBlur(dst, dst, ksize, 0, 0, cv.BORDER_DEFAULT);
+  cv.GaussianBlur(processedDst, processedDst, ksize, 0, 0, cv.BORDER_DEFAULT);
   ksize.delete;
 
   // Threshold
   cv.adaptiveThreshold(
-    dst,
-    dst,
+    processedDst,
+    processedDst,
     255,
     cv.ADAPTIVE_THRESH_GAUSSIAN_C,
     cv.THRESH_BINARY_INV,
     7,
     2
   );
-  return dst;
+  return processedDst;
 }
 
-function findCorners(src, cv) {
+function findCorners(src) {
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   cv.findContours(
@@ -115,13 +211,13 @@ function findCorners(src, cv) {
   return null;
 }
 
-function cropPuzzle(src, corners, cv) {
+function cropPuzzle(src, corners) {
   // Set side to length from top left to top right corner, use for warped image
   let a = corners[0] - corners[2];
   let b = corners[1] - corners[3];
   let side = Math.sqrt(Math.pow(a, 2) + Math.pow(b, 2));
-  a.delete;
-  b.delete;
+
+  croppedDst = new cv.Mat(side, side, cv.CV_8UC1);
 
   let dsize = new cv.Size(side, side);
   let pt1 = cv.matFromArray(4, 1, cv.CV_32FC2, corners);
@@ -138,7 +234,7 @@ function cropPuzzle(src, corners, cv) {
   let M = cv.getPerspectiveTransform(pt1, pt2);
   cv.warpPerspective(
     src,
-    src,
+    croppedDst,
     M,
     dsize,
     cv.INTER_LINEAR,
@@ -147,7 +243,9 @@ function cropPuzzle(src, corners, cv) {
   );
   dsize.delete;
   M.delete();
-  return src;
+  pt1.delete();
+  pt2.delete();
+  return croppedDst;
 }
 
 // Sorting functions
@@ -193,205 +291,201 @@ function quickSort(items, left, right) {
   return items;
 }
 
-function extractBoard(src, cv) {
-  try {
-    // Init board
-    let board = [
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-      [
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-        [0, 0],
-      ],
-    ];
-    let processed = new cv.Mat();
+function extractBoard(src) {
+  let extractDst = new cv.Mat(src.rows, src.cols, cv.CV_8UC4);
+  // Init board
+  let board = [
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+    [
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+      [0, 0],
+    ],
+  ];
 
-    // Extract cells from board
-    // Calculate estimate for what each cell area should be
-    let cellAreaEst = Math.pow(src.rows / 9, 2);
-    let limit = cellAreaEst / 5;
-    // Loop through different kernel sizes to close lines
-    for (let i = 5; i < 12; i += 2) {
-      // Close horizontal and vertical lines
-      let kernel = new cv.Mat();
-      ksize = new cv.Size(i, i);
-      kernel = cv.getStructuringElement(cv.MORPH_RECT, ksize);
-      cv.morphologyEx(src, processed, cv.MORPH_CLOSE, kernel);
-      kernel.delete();
-      ksize.delete;
+  // Extract cells from board
+  // Calculate estimate for what each cell area should be
+  let cellAreaEst = Math.pow(src.rows / 9, 2);
+  let limit = cellAreaEst / 5;
+  // Loop through different kernel sizes to close lines
+  for (let i = 5; i < 12; i += 2) {
+    // Close horizontal and vertical lines
+    let kernel = new cv.Mat();
+    ksize = new cv.Size(i, i);
+    kernel = cv.getStructuringElement(cv.MORPH_RECT, ksize);
+    cv.morphologyEx(src, extractDst, cv.MORPH_CLOSE, kernel);
+    kernel.delete();
+    ksize.delete;
 
-      // Invert image so its white on black
-      cv.bitwise_not(processed, processed);
+    // Invert image so its white on black
+    cv.bitwise_not(extractDst, extractDst);
 
-      // Find outline contours
-      let contours = new cv.MatVector();
-      let hierarchy = new cv.Mat();
-      cv.findContours(
-        processed,
-        contours,
-        hierarchy,
-        cv.RETR_EXTERNAL,
-        cv.CHAIN_APPROX_SIMPLE
-      );
-      var contoursInRange = new cv.MatVector();
-      let tempArea;
-      for (let i = 0; i < contours.size(); i++) {
-        tempArea = cv.contourArea(contours.get(i), false);
-        if (tempArea > cellAreaEst - limit && tempArea < cellAreaEst + limit) {
-          contoursInRange.push_back(contours.get(i));
-        }
+    // Find outline contours
+    let contours = new cv.MatVector();
+    let hierarchy = new cv.Mat();
+    cv.findContours(
+      extractDst,
+      contours,
+      hierarchy,
+      cv.RETR_EXTERNAL,
+      cv.CHAIN_APPROX_SIMPLE
+    );
+    var contoursInRange = new cv.MatVector();
+    let tempArea;
+    for (let i = 0; i < contours.size(); i++) {
+      tempArea = cv.contourArea(contours.get(i), false);
+      if (tempArea > cellAreaEst - limit && tempArea < cellAreaEst + limit) {
+        contoursInRange.push_back(contours.get(i));
       }
-      contours.delete();
-      hierarchy.delete();
+    }
+    contours.delete();
+    hierarchy.delete();
 
-      if (contoursInRange.size() == 81) {
-        break;
+    if (contoursInRange.size() == 81) {
+      break;
+    } else {
+      if (i == 11) {
+        contoursInRange.delete();
+        return null;
       } else {
-        if (i == 11) {
-          contoursInRange.delete();
-          return null;
-        } else {
-          continue;
-        }
+        continue;
       }
     }
-    // Sort contours into top to bottom
-    let contoursSortedVertical = new cv.MatVector();
-    for (let i = contoursInRange.size() - 1; i > -1; i--) {
-      contoursSortedVertical.push_back(contoursInRange.get(i));
-    }
-    contoursInRange.delete();
-
-    // Sort contours into left to right
-    let contoursSortedHorizontal = new cv.MatVector();
-    let temp;
-    for (let i = 0; i < 9; i++) {
-      temp = [];
-      for (let j = 0; j < 9; j++) {
-        temp.push(contoursSortedVertical.get(i * 9 + j));
-      }
-      // Sort
-      temp = quickSort(temp, 0, temp.length - 1);
-      for (let j = 0; j < 9; j++) {
-        contoursSortedHorizontal.push_back(temp[j]);
-      }
-    }
-    contoursSortedVertical.delete();
-
-    // Fill board
-    for (let j = 0; j < 9; j++) {
-      for (let i = 0; i < 9; i++) {
-        let rect = cv.boundingRect(contoursSortedHorizontal.get(j * 9 + i));
-        cell = src.roi(rect);
-        cell = identifyCell(cell, cv);
-        if (cell != null) {
-          board[j][i][1] = 1;
-          cell.delete();
-        }
-      }
-    }
-    contoursSortedHorizontal.delete();
-    processed.delete();
-    return board;
-  } catch (err) {
-    return null;
   }
+  // Sort contours into top to bottom
+  let contoursSortedVertical = new cv.MatVector();
+  for (let i = contoursInRange.size() - 1; i > -1; i--) {
+    contoursSortedVertical.push_back(contoursInRange.get(i));
+  }
+  contoursInRange.delete();
+
+  // Sort contours into left to right
+  let contoursSortedHorizontal = new cv.MatVector();
+  let temp;
+  for (let i = 0; i < 9; i++) {
+    temp = [];
+    for (let j = 0; j < 9; j++) {
+      temp.push(contoursSortedVertical.get(i * 9 + j));
+    }
+    // Sort
+    temp = quickSort(temp, 0, temp.length - 1);
+    for (let j = 0; j < 9; j++) {
+      contoursSortedHorizontal.push_back(temp[j]);
+    }
+  }
+  contoursSortedVertical.delete();
+
+  // Fill board
+  for (let j = 0; j < 9; j++) {
+    for (let i = 0; i < 9; i++) {
+      let rect = cv.boundingRect(contoursSortedHorizontal.get(j * 9 + i));
+      cell = src.roi(rect);
+      cell = identifyCell(cell, cv);
+      if (cell != null) {
+        board[j][i][1] = 1;
+        cell.delete();
+      }
+    }
+  }
+  contoursSortedHorizontal.delete();
+  extractDst.delete();
+  return board;
 }
 
-function identifyCell(cell, cv) {
+function identifyCell(cell) {
   let w = cell.cols;
   let h = cell.rows;
   let x = Math.floor(w * 0.1);
@@ -475,14 +569,14 @@ function identifyCell(cell, cv) {
   return cell;
 }
 
-function overlayPuzzle(src, board, gridSize, corners, cv) {
+function overlayPuzzle(src, board, gridSize, corners) {
+  let overlay = new cv.Mat(
+    gridSize,
+    gridSize,
+    cv.CV_8UC4,
+    new cv.Scalar(0, 0, 0)
+  );
   try {
-    let overlay = new cv.Mat(
-      gridSize,
-      gridSize,
-      cv.CV_8UC4,
-      new cv.Scalar(0, 0, 0)
-    );
     // Draw gridlines
     cellSize = Math.floor(gridSize / 9);
     for (let i = 0; i < 10; i++) {
@@ -546,8 +640,10 @@ function overlayPuzzle(src, board, gridSize, corners, cv) {
     // Add overlay to source
     let addedImage = new cv.Mat(src.rows, src.cols, cv.CV_8UC4);
     cv.addWeighted(src, 1, overlay, 1, 0, addedImage);
+    overlay.delete();
     return addedImage;
   } catch (err) {
+    overlay.delete();
     return src;
   }
 }
