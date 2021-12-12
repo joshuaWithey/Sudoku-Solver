@@ -44,7 +44,9 @@ function startCamera() {
   );
 }
 async function tensorFlow() {
-  const model = await tf.loadLayersModel("resources/model.json");
+  const model = await tf.loadLayersModel(
+    "https://raw.githubusercontent.com/joshuaWithey/Sudoku-Solver/main/website/resources/model.json"
+  );
 }
 function startVideoProcessing() {
   tensorFlow();
@@ -475,6 +477,21 @@ function extractBoard(src) {
       cell = src.roi(rect);
       cell = identifyCell(cell, cv);
       if (cell != null) {
+        console.log(cell);
+        let dsize = new cv.Size(28, 28);
+        cv.resize(cell, cell, dsize, 0, 0, cv.INTER_AREA);
+
+        // digit = digit.astype("float") / 255
+        // digit = img_to_array(digit)
+        // digit = np.expand_dims(digit, axis=0)
+
+        // interpreter.set_tensor(input_details[0]['index'], digit)
+        // interpreter.invoke()
+        // output_data = interpreter.get_tensor(
+        //     output_details[0]['index'])
+
+        // board[j][i][0] = np.argmax(output_data) + 1
+        // board[j][i][1] = 1
         board[j][i][1] = 1;
         cell.delete();
       }
