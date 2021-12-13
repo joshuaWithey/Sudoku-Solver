@@ -1,19 +1,27 @@
+const board = [
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+];
 let width = 0;
 let height = 0;
 // whether streaming video from the camera.
 // Import keras model
+let model = null;
 let streaming = false;
-let video = document.getElementById("video");
+const video = document.getElementById("video");
 let stream = null;
 let cap = null;
 let src = null;
-let dst = null;
-let output = null;
-let corners = null;
-let processedDst = null;
-let croppedDst = null;
-let puzzleNotFound = 0;
-let puzzleSolved = false;
+let puzzleNotFound = null;
+let puzzleSolved = null;
+let gridSize = null;
 function startCamera() {
   if (streaming) return;
   navigator.mediaDevices
@@ -43,63 +51,112 @@ function startCamera() {
     false
   );
 }
+function stopCamera() {
+  if (!streaming) return;
+  stopVideoProcessing();
+  document
+    .getElementById("canvasOutput")
+    .getContext("2d")
+    .clearRect(0, 0, width, height);
+  video.pause();
+  video.srcObject = null;
+  stream.getVideoTracks()[0].stop();
+  streaming = false;
+}
 async function tensorFlow() {
-  const model = await tf.loadLayersModel(
+  model = await tf.loadLayersModel(
     "https://raw.githubusercontent.com/joshuaWithey/Sudoku-Solver/main/website/resources/model.json"
   );
 }
+// async function makePrediction(tensors) {
+//   for (let i = 0; i < tensors.length; i += 3) {
+//     prediction = await model.predict(tensors[i]).data();
+//     let results = Array.from(prediction);
+//     let maxIndex = 0;
+//     let max = results[0];
+//     for (let k = 1; k < 9; k++) {
+//       if (results[k] > max) {
+//         max = results[k];
+//         maxIndex = k;
+//       }
+//     }
+//     board[tensors[i + 1]][tensors[i + 2]] = maxIndex + 1;
+//   }
+//   puzzleFound = true;
+// }
 function startVideoProcessing() {
-  tensorFlow();
   if (!streaming) {
     console.warn("Please startup your webcam");
     return;
   }
   stopVideoProcessing();
+  tensorFlow();
   src = new cv.Mat(height, width, cv.CV_8UC4);
-  dst = new cv.Mat(height, width, cv.CV_8UC4);
-  processedDst = new cv.Mat(height, width, cv.CV_8UC4);
+  puzzleNotFound = 0;
+  puzzleSolved = false;
   requestAnimationFrame(processVideo);
 }
-function processVideo() {
+async function processVideo() {
   cap.read(src);
-  let result = src;
   let processed = processImage(src);
   let corners = findCorners(processed);
   if (corners != null) {
-    puzzleNotFound = 0;
     if (!puzzleSolved) {
       let cropped = cropPuzzle(processed, corners);
-      board = extractBoard(cropped);
-      if (board != null) {
-        //Solve puzzle
-        puzzleSolved = true;
+      gridSize = cropped.rows;
+      extractedDigits = extractBoard(cropped);
+      if (extractedDigits != null) {
+        for (let i = 0; i < extractedDigits.length; i += 3) {
+          prediction = await model.predict(extractedDigits[i]).data();
+          extractedDigits[i].dispose();
+          let results = Array.from(prediction);
+          let maxIndex = 0;
+          let max = results[0];
+          for (let k = 1; k < 9; k++) {
+            if (results[k] > max) {
+              max = results[k];
+              maxIndex = k;
+            }
+          }
+          board[extractedDigits[i + 1]][extractedDigits[i + 2]] = maxIndex + 1;
+        }
+        if (solveSudoku(board)) {
+          puzzleSolved = true;
+        }
       }
+      cropped.delete();
     }
   } else {
-    puzzleNotFound += 1;
-    if (puzzleNotFound > 10) {
-      puzzleSolved = false;
-    }
+    resetBoard();
+    puzzleSolved = false;
   }
   if (puzzleSolved) {
-    result = overlayPuzzle(src, board, dst.rows, corners);
+    overlayPuzzle(corners);
   }
-  cv.imshow("canvasOutput", result);
+  processed.delete();
+  if (corners != null) corners.delete;
+  cv.imshow("canvasOutput", src);
   requestAnimationFrame(processVideo);
 }
 function stopVideoProcessing() {
   if (src != null && !src.isDeleted()) src.delete();
-  if (dst != null && !dst.isDeleted()) dstC1.delete();
 }
 function opencvIsReady() {
   console.log("OpenCV.js is ready");
   info.innerHTML = "OpenCV.js is ready";
   startCamera();
 }
-
-function processImage(src) {
+function resetBoard() {
+  for (let i = 0; i < 9; i++) {
+    for (let j = 0; j < 9; j++) {
+      board[i][j] = 0;
+    }
+  }
+}
+function processImage(input) {
+  let processedDst = new cv.Mat(height, width, cv.CV_8UC1);
   // Grayscale
-  cv.cvtColor(src, processedDst, cv.COLOR_RGBA2GRAY);
+  cv.cvtColor(input, processedDst, cv.COLOR_RGBA2GRAY);
 
   // Guassian filter
   let ksize = new cv.Size(5, 5);
@@ -119,11 +176,11 @@ function processImage(src) {
   return processedDst;
 }
 
-function findCorners(src) {
+function findCorners(image) {
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   cv.findContours(
-    src,
+    image,
     contours,
     hierarchy,
     cv.RETR_EXTERNAL,
@@ -213,7 +270,7 @@ function findCorners(src) {
   return null;
 }
 
-function cropPuzzle(src, corners) {
+function cropPuzzle(input, corners) {
   // Set side to length from top left to top right corner, use for warped image
   let a = corners[0] - corners[2];
   let b = corners[1] - corners[3];
@@ -235,7 +292,7 @@ function cropPuzzle(src, corners) {
   ]);
   let M = cv.getPerspectiveTransform(pt1, pt2);
   cv.warpPerspective(
-    src,
+    input,
     croppedDst,
     M,
     dsize,
@@ -292,115 +349,11 @@ function quickSort(items, left, right) {
   }
   return items;
 }
-
-function extractBoard(src) {
-  let extractDst = new cv.Mat(src.rows, src.cols, cv.CV_8UC4);
-  // Init board
-  let board = [
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-    [
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-      [0, 0],
-    ],
-  ];
-
+function extractBoard(input) {
+  let extractDst = new cv.Mat(input.rows, input.cols, cv.CV_8UC4);
   // Extract cells from board
   // Calculate estimate for what each cell area should be
-  let cellAreaEst = Math.pow(src.rows / 9, 2);
+  let cellAreaEst = Math.pow(input.rows / 9, 2);
   let limit = cellAreaEst / 5;
   // Loop through different kernel sizes to close lines
   for (let i = 5; i < 12; i += 2) {
@@ -408,7 +361,7 @@ function extractBoard(src) {
     let kernel = new cv.Mat();
     ksize = new cv.Size(i, i);
     kernel = cv.getStructuringElement(cv.MORPH_RECT, ksize);
-    cv.morphologyEx(src, extractDst, cv.MORPH_CLOSE, kernel);
+    cv.morphologyEx(input, extractDst, cv.MORPH_CLOSE, kernel);
     kernel.delete();
     ksize.delete;
 
@@ -442,8 +395,6 @@ function extractBoard(src) {
       if (i == 11) {
         contoursInRange.delete();
         return null;
-      } else {
-        continue;
       }
     }
   }
@@ -456,9 +407,8 @@ function extractBoard(src) {
 
   // Sort contours into left to right
   let contoursSortedHorizontal = new cv.MatVector();
-  let temp;
   for (let i = 0; i < 9; i++) {
-    temp = [];
+    let temp = [];
     for (let j = 0; j < 9; j++) {
       temp.push(contoursSortedVertical.get(i * 9 + j));
     }
@@ -467,54 +417,62 @@ function extractBoard(src) {
     for (let j = 0; j < 9; j++) {
       contoursSortedHorizontal.push_back(temp[j]);
     }
+    temp.delete;
   }
   contoursSortedVertical.delete();
+  extractDst.delete();
 
   // Fill board
+  let tensors = [];
   for (let j = 0; j < 9; j++) {
     for (let i = 0; i < 9; i++) {
       let rect = cv.boundingRect(contoursSortedHorizontal.get(j * 9 + i));
-      cell = src.roi(rect);
-      cell = identifyCell(cell, cv);
-      if (cell != null) {
-        console.log(cell);
-        let dsize = new cv.Size(28, 28);
-        cv.resize(cell, cell, dsize, 0, 0, cv.INTER_AREA);
+      let cell = new cv.Mat();
+      cell = input.roi(rect);
 
-        // digit = digit.astype("float") / 255
-        // digit = img_to_array(digit)
-        // digit = np.expand_dims(digit, axis=0)
+      rect.delete;
+      let digit = identifyCell(cell);
+      cell.delete();
 
-        // interpreter.set_tensor(input_details[0]['index'], digit)
-        // interpreter.invoke()
-        // output_data = interpreter.get_tensor(
-        //     output_details[0]['index'])
-
-        // board[j][i][0] = np.argmax(output_data) + 1
-        // board[j][i][1] = 1
-        board[j][i][1] = 1;
-        cell.delete();
+      if (digit != null) {
+        // Resize image
+        dsize = new cv.Size(28, 28);
+        cv.resize(digit, digit, dsize, 0, 0, cv.INTER_AREA);
+        // Convert mat to array
+        let converted = [];
+        for (let i = 0; i < digit.cols; i++) {
+          let temp = [];
+          for (let j = 0; j < digit.rows; j++) {
+            temp.push(digit.data[i * digit.cols + j] / 255);
+          }
+          converted.push(temp);
+        }
+        let tensor = tf.tensor(converted).expandDims().expandDims(3);
+        tensors.push(tensor);
+        tensors.push(j);
+        tensors.push(i);
+        converted.delete;
       }
     }
   }
   contoursSortedHorizontal.delete();
-  extractDst.delete();
-  return board;
+  return tensors;
 }
 
-function identifyCell(cell) {
-  let w = cell.cols;
-  let h = cell.rows;
+function identifyCell(image) {
+  let w = image.cols;
+  let h = image.rows;
   let x = Math.floor(w * 0.1);
   let y = Math.floor(h * 0.1);
   //remove outer 10% of cell
+  let cellDst = new cv.Mat();
   let rect = new cv.Rect(x, y, w - x, h - y);
-  cell = cell.roi(rect);
+  cellDst = image.roi(rect);
   // Find contours
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   cv.findContours(
-    cell,
+    cellDst,
     contours,
     hierarchy,
     cv.RETR_TREE,
@@ -538,62 +496,62 @@ function identifyCell(cell) {
   tempArea.delete;
 
   // Create mask
-  let mask = cv.Mat.zeros(cell.rows, cell.cols, cv.CV_8U);
+  let mask = cv.Mat.zeros(cellDst.rows, cellDst.cols, cv.CV_8U);
   // Draw largest contour on mask
   cv.drawContours(mask, contours, maxIndex, new cv.Scalar(255), -1);
 
-  if (cv.countNonZero(mask) / (cell.rows * cell.cols) < 0.05) {
+  if (cv.countNonZero(mask) / (cellDst.rows * cellDst.cols) < 0.05) {
     return null;
   }
 
   // Check if contour is too close to the edge, indicating noise
   rect = cv.boundingRect(contours.get(maxIndex));
-  let limitX = cell.cols * 0.1;
-  let limitY = cell.rows * 0.1;
+  let limitX = cellDst.cols * 0.1;
+  let limitY = cellDst.rows * 0.1;
   if (
     rect.x < limitX ||
     rect.y < limitY ||
-    rect.x + rect.w > cell.cols - limitX ||
-    rect.y + rect.h > cell.rows - limitY
+    rect.x + rect.width > cellDst.cols - limitX ||
+    rect.y + rect.height > cellDst.rows - limitY
   ) {
     return null;
   }
   // Apply mask to initial cell
-  cv.bitwise_and(cell, mask, cell);
+  cv.bitwise_and(cellDst, mask, cellDst);
   mask.delete();
 
-  // Final crop to make square
-  w = cell.cols;
-  h = cell.rows;
-  if (w > h) {
-    rect = new cv.Rect(
-      Math.floor((w - h) / 2),
-      0,
-      Math.floor((w - h) / 2) + h,
-      h
+  // Draw bounding rect around contour, return square around the rect
+  if (rect.height > rect.width) {
+    let limit = Math.floor(rect.height * 0.2);
+    let square = new cv.Rect(
+      rect.x - Math.floor((rect.height - rect.width) / 2) - limit,
+      rect.y - limit,
+      rect.height + 2 * limit,
+      rect.height + 2 * limit
     );
-    cell = cell.roi(rect);
+    cellDst = cellDst.roi(square);
   } else {
-    rect = new cv.Rect(
-      0,
-      Math.floor((h - w) / 2),
-      w,
-      Math.floor((h - w) / 2) + w
+    let limit = Math.floor(rect.width * 0.2);
+    let square = new cv.Rect(
+      rect.x - limit,
+      rect.y - Math.floor((rect.width - rect.height) / 2) - limit,
+      rect.width + 2 * limit,
+      rect.width + 2 * limit
     );
-    cell = cell.roi(rect);
+    cellDst = cellDst.roi(square);
   }
-
-  return cell;
+  return cellDst;
 }
 
-function overlayPuzzle(src, board, gridSize, corners) {
-  let overlay = new cv.Mat(
-    gridSize,
-    gridSize,
-    cv.CV_8UC4,
-    new cv.Scalar(0, 0, 0)
-  );
+function overlayPuzzle(corners) {
   try {
+    let overlay = new cv.Mat(
+      gridSize,
+      gridSize,
+      cv.CV_8UC4,
+      new cv.Scalar(0, 0, 0)
+    );
+
     // Draw gridlines
     cellSize = Math.floor(gridSize / 9);
     for (let i = 0; i < 10; i++) {
@@ -617,18 +575,16 @@ function overlayPuzzle(src, board, gridSize, corners) {
     let scale = cellSize / 50;
     for (let i = 0; i < 9; i++) {
       for (let j = 0; j < 9; j++) {
-        if (board[j][i][1] == 0) {
-          let text = board[j][i][0].toString();
-          cv.putText(
-            overlay,
-            text,
-            new cv.Point(i * cellSize, j * cellSize + cellSize),
-            font,
-            scale,
-            [0, 255, 0, 255],
-            2
-          );
-        }
+        let text = board[j][i].toString();
+        cv.putText(
+          overlay,
+          text,
+          new cv.Point(i * cellSize, j * cellSize + cellSize),
+          font,
+          scale,
+          [0, 255, 0, 255],
+          2
+        );
       }
     }
     // Warp overlay
@@ -655,12 +611,142 @@ function overlayPuzzle(src, board, gridSize, corners) {
       new cv.Scalar()
     );
     // Add overlay to source
-    let addedImage = new cv.Mat(src.rows, src.cols, cv.CV_8UC4);
-    cv.addWeighted(src, 1, overlay, 1, 0, addedImage);
+    cv.addWeighted(src, 1, overlay, 1, 0, src);
     overlay.delete();
-    return addedImage;
   } catch (err) {
-    overlay.delete();
-    return src;
+    cap.read(src);
+    console.log(err);
   }
+}
+
+// Sudoku from https://github.com/RubinderS/Sudoku-Solver-JavaScript/blob/master/Sudoku.js
+function solveSudoku(gameArr) {
+  var emptySpot = nextEmptySpot(gameArr);
+  var r = emptySpot[0];
+  var c = emptySpot[1];
+
+  // if the game is unsolvable don't even try to solve it
+  if (!isValidSudoku(gameArr)) return gameArr;
+
+  // if no vacant spot is left, board is solved
+  if (r === -1) {
+    return gameArr;
+  }
+
+  var possArr = possibilities(r, c, gameArr);
+
+  for (var k = 0; k < possArr.length && nextEmptySpot(gameArr)[0] !== -1; k++) {
+    gameArr[r][c] = possArr[k];
+    solveSudoku(gameArr);
+  }
+
+  // if no possible value leads to a solution reset this value
+  if (nextEmptySpot(gameArr)[0] !== -1) gameArr[r][c] = 0;
+
+  return gameArr;
+}
+
+function nextEmptySpot(gameArr) {
+  for (var i = 0; i < 9; i++) {
+    for (var j = 0; j < 9; j++) {
+      if (gameArr[i][j] === 0) return [i, j];
+    }
+  }
+
+  return [-1, -1];
+}
+
+function possibilities(r, c, gameArr) {
+  var possArr = [];
+  var row = [];
+  var col = [];
+  var quad = [];
+  var k = 0;
+  var l = 0;
+
+  if (r <= 2) k = 0;
+  else if (r <= 5) k = 3;
+  else k = 6;
+  if (c <= 2) l = 0;
+  else if (c <= 5) l = 3;
+  else l = 6;
+
+  for (var i = 0; i < 9; i++) {
+    row.push(gameArr[i][c]);
+  }
+
+  for (var j = 0; j < 9; j++) {
+    col.push(gameArr[r][j]);
+  }
+
+  for (var i = k; i < k + 3; i++) {
+    for (var j = l; j < l + 3; j++) {
+      quad.push(gameArr[i][j]);
+    }
+  }
+
+  for (var n = 1; n < 10; n++) {
+    if (
+      row.indexOf(n) === -1 &&
+      col.indexOf(n) === -1 &&
+      quad.indexOf(n) === -1
+    ) {
+      possArr.push(n);
+    }
+  }
+
+  return possArr;
+}
+
+function checkQuadrant(r, c, gameArr) {
+  var quadrantArr = [];
+  for (var i = r; i < r + 3; i++) {
+    for (var j = c; j < c + 3; j++) {
+      if (quadrantArr.indexOf(gameArr[i][j]) === -1 || gameArr[i][j] === 0) {
+        quadrantArr.push(gameArr[i][j]);
+      } else {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+function isValidSudoku(gameArr) {
+  if (!checkQuadrant(0, 0, gameArr)) return false;
+  if (!checkQuadrant(0, 3, gameArr)) return false;
+  if (!checkQuadrant(0, 6, gameArr)) return false;
+
+  if (!checkQuadrant(3, 0, gameArr)) return false;
+  if (!checkQuadrant(3, 3, gameArr)) return false;
+  if (!checkQuadrant(3, 6, gameArr)) return false;
+
+  if (!checkQuadrant(6, 0, gameArr)) return false;
+  if (!checkQuadrant(6, 3, gameArr)) return false;
+  if (!checkQuadrant(6, 6, gameArr)) return false;
+
+  for (var i = 0; i < gameArr.length; i++) {
+    var rowNumbers = [];
+    for (var j = 0; j < gameArr.length; j++) {
+      if (rowNumbers.indexOf(gameArr[i][j]) === -1 || gameArr[i][j] === 0) {
+        rowNumbers.push(gameArr[i][j]);
+      } else {
+        return false;
+      }
+    }
+  }
+
+  for (var i = 0; i < gameArr.length; i++) {
+    var colNumbers = [];
+    for (var j = 0; j < gameArr.length; j++) {
+      if (colNumbers.indexOf(gameArr[j][i]) === -1 || gameArr[j][i] === 0) {
+        colNumbers.push(gameArr[j][i]);
+      } else {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
