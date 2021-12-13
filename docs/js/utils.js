@@ -65,7 +65,7 @@ function stopCamera() {
 }
 async function tensorFlow() {
   model = await tf.loadLayersModel(
-    "https://raw.githubusercontent.com/joshuaWithey/Sudoku-Solver/docs/website/resources/model.json"
+    "https://raw.githubusercontent.com/joshuaWithey/Sudoku-Solver/main/docs/resources/model.json"
   );
 }
 // async function makePrediction(tensors) {
