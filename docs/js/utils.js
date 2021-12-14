@@ -101,9 +101,9 @@ const board = [
 ];
 let width = 0;
 let height = 0;
-// whether streaming video from the camera.
 // Import keras model
 let model = null;
+// whether streaming video from the camera.
 let streaming = false;
 const video = document.getElementById("video");
 let stream = null;
