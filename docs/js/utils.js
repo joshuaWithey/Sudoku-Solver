@@ -1,13 +1,103 @@
 const board = [
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
-  [0, 0, 0, 0, 0, 0, 0, 0, 0],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
+  [
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+    [0, 0],
+  ],
 ];
 let width = 0;
 let height = 0;
@@ -63,34 +153,15 @@ function stopCamera() {
   stream.getVideoTracks()[0].stop();
   streaming = false;
 }
-async function tensorFlow() {
-  model = await tf.loadLayersModel(
-    "https://raw.githubusercontent.com/joshuaWithey/Sudoku-Solver/main/docs/resources/model.json"
-  );
-}
-// async function makePrediction(tensors) {
-//   for (let i = 0; i < tensors.length; i += 3) {
-//     prediction = await model.predict(tensors[i]).data();
-//     let results = Array.from(prediction);
-//     let maxIndex = 0;
-//     let max = results[0];
-//     for (let k = 1; k < 9; k++) {
-//       if (results[k] > max) {
-//         max = results[k];
-//         maxIndex = k;
-//       }
-//     }
-//     board[tensors[i + 1]][tensors[i + 2]] = maxIndex + 1;
-//   }
-//   puzzleFound = true;
-// }
-function startVideoProcessing() {
+async function startVideoProcessing() {
   if (!streaming) {
     console.warn("Please startup your webcam");
     return;
   }
   stopVideoProcessing();
-  tensorFlow();
+  model = await tf.loadLayersModel(
+    "https://raw.githubusercontent.com/joshuaWithey/Sudoku-Solver/main/docs/resources/model.json"
+  );
   src = new cv.Mat(height, width, cv.CV_8UC4);
   puzzleNotFound = 0;
   puzzleSolved = false;
@@ -118,10 +189,14 @@ async function processVideo() {
               maxIndex = k;
             }
           }
-          board[extractedDigits[i + 1]][extractedDigits[i + 2]] = maxIndex + 1;
+          board[extractedDigits[i + 1]][extractedDigits[i + 2]][0] =
+            maxIndex + 1;
+          board[extractedDigits[i + 1]][extractedDigits[i + 2]][1] = 1;
         }
         if (solveSudoku(board)) {
           puzzleSolved = true;
+        } else {
+          resetBoard();
         }
       }
       cropped.delete();
@@ -149,7 +224,8 @@ function opencvIsReady() {
 function resetBoard() {
   for (let i = 0; i < 9; i++) {
     for (let j = 0; j < 9; j++) {
-      board[i][j] = 0;
+      board[i][j][0] = 0;
+      board[i][j][1] = 0;
     }
   }
 }
@@ -575,16 +651,21 @@ function overlayPuzzle(corners) {
     let scale = cellSize / 50;
     for (let i = 0; i < 9; i++) {
       for (let j = 0; j < 9; j++) {
-        let text = board[j][i].toString();
-        cv.putText(
-          overlay,
-          text,
-          new cv.Point(i * cellSize, j * cellSize + cellSize),
-          font,
-          scale,
-          [0, 255, 0, 255],
-          2
-        );
+        if (board[j][i][1] == 0) {
+          let text = board[j][i][0].toString();
+          cv.putText(
+            overlay,
+            text,
+            new cv.Point(
+              i * cellSize + cellSize / 3,
+              j * cellSize + cellSize - cellSize / 4
+            ),
+            font,
+            scale,
+            [0, 255, 0, 255],
+            2
+          );
+        }
       }
     }
     // Warp overlay
@@ -619,7 +700,7 @@ function overlayPuzzle(corners) {
   }
 }
 
-// Sudoku from https://github.com/RubinderS/Sudoku-Solver-JavaScript/blob/master/Sudoku.js
+//Sudoku from https://github.com/RubinderS/Sudoku-Solver-JavaScript/blob/master/Sudoku.js
 function solveSudoku(gameArr) {
   var emptySpot = nextEmptySpot(gameArr);
   var r = emptySpot[0];
@@ -636,12 +717,12 @@ function solveSudoku(gameArr) {
   var possArr = possibilities(r, c, gameArr);
 
   for (var k = 0; k < possArr.length && nextEmptySpot(gameArr)[0] !== -1; k++) {
-    gameArr[r][c] = possArr[k];
+    gameArr[r][c][0] = possArr[k];
     solveSudoku(gameArr);
   }
 
   // if no possible value leads to a solution reset this value
-  if (nextEmptySpot(gameArr)[0] !== -1) gameArr[r][c] = 0;
+  if (nextEmptySpot(gameArr)[0] !== -1) gameArr[r][c][0] = 0;
 
   return gameArr;
 }
@@ -649,7 +730,7 @@ function solveSudoku(gameArr) {
 function nextEmptySpot(gameArr) {
   for (var i = 0; i < 9; i++) {
     for (var j = 0; j < 9; j++) {
-      if (gameArr[i][j] === 0) return [i, j];
+      if (gameArr[i][j][0] === 0) return [i, j];
     }
   }
 
@@ -672,16 +753,16 @@ function possibilities(r, c, gameArr) {
   else l = 6;
 
   for (var i = 0; i < 9; i++) {
-    row.push(gameArr[i][c]);
+    row.push(gameArr[i][c][0]);
   }
 
   for (var j = 0; j < 9; j++) {
-    col.push(gameArr[r][j]);
+    col.push(gameArr[r][j][0]);
   }
 
   for (var i = k; i < k + 3; i++) {
     for (var j = l; j < l + 3; j++) {
-      quad.push(gameArr[i][j]);
+      quad.push(gameArr[i][j][0]);
     }
   }
 
@@ -702,8 +783,11 @@ function checkQuadrant(r, c, gameArr) {
   var quadrantArr = [];
   for (var i = r; i < r + 3; i++) {
     for (var j = c; j < c + 3; j++) {
-      if (quadrantArr.indexOf(gameArr[i][j]) === -1 || gameArr[i][j] === 0) {
-        quadrantArr.push(gameArr[i][j]);
+      if (
+        quadrantArr.indexOf(gameArr[i][j][0]) === -1 ||
+        gameArr[i][j][0] === 0
+      ) {
+        quadrantArr.push(gameArr[i][j][0]);
       } else {
         return false;
       }
@@ -729,8 +813,11 @@ function isValidSudoku(gameArr) {
   for (var i = 0; i < gameArr.length; i++) {
     var rowNumbers = [];
     for (var j = 0; j < gameArr.length; j++) {
-      if (rowNumbers.indexOf(gameArr[i][j]) === -1 || gameArr[i][j] === 0) {
-        rowNumbers.push(gameArr[i][j]);
+      if (
+        rowNumbers.indexOf(gameArr[i][j][0]) === -1 ||
+        gameArr[i][j][0] === 0
+      ) {
+        rowNumbers.push(gameArr[i][j][0]);
       } else {
         return false;
       }
@@ -740,8 +827,11 @@ function isValidSudoku(gameArr) {
   for (var i = 0; i < gameArr.length; i++) {
     var colNumbers = [];
     for (var j = 0; j < gameArr.length; j++) {
-      if (colNumbers.indexOf(gameArr[j][i]) === -1 || gameArr[j][i] === 0) {
-        colNumbers.push(gameArr[j][i]);
+      if (
+        colNumbers.indexOf(gameArr[j][i][0]) === -1 ||
+        gameArr[j][i][0] === 0
+      ) {
+        colNumbers.push(gameArr[j][i][0]);
       } else {
         return false;
       }
