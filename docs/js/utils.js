@@ -163,55 +163,62 @@ async function startVideoProcessing() {
     "https://raw.githubusercontent.com/joshuaWithey/Sudoku-Solver/main/docs/resources/model.json"
   );
   src = new cv.Mat(height, width, cv.CV_8UC4);
-  puzzleNotFound = 0;
+  processed = new cv.Mat(height, width, cv.CV_8UC1);
   puzzleSolved = false;
   requestAnimationFrame(processVideo);
 }
 async function processVideo() {
-  cap.read(src);
-  let processed = processImage(src);
-  let corners = findCorners(processed);
-  if (corners != null) {
-    if (!puzzleSolved) {
-      let cropped = cropPuzzle(processed, corners);
-      gridSize = cropped.rows;
-      extractedDigits = extractBoard(cropped);
-      if (extractedDigits != null) {
-        for (let i = 0; i < extractedDigits.length; i += 3) {
-          prediction = await model.predict(extractedDigits[i]).data();
-          extractedDigits[i].dispose();
-          let results = Array.from(prediction);
-          let maxIndex = 0;
-          let max = results[0];
-          for (let k = 1; k < 9; k++) {
-            if (results[k] > max) {
-              max = results[k];
-              maxIndex = k;
+  try {
+    cap.read(src);
+    let processed = processImage(src);
+    let corners = findCorners(processed);
+    if (corners != null) {
+      if (!puzzleSolved) {
+        let cropped = cropPuzzle(processed, corners);
+        gridSize = cropped.rows;
+        extractedDigits = extractBoard(cropped);
+        if (extractedDigits != null) {
+          for (let i = 0; i < extractedDigits.length; i += 3) {
+            prediction = await model.predict(extractedDigits[i]).data();
+            extractedDigits[i].dispose();
+            let results = Array.from(prediction);
+            let maxIndex = 0;
+            let max = results[0];
+            for (let k = 1; k < 9; k++) {
+              if (results[k] > max) {
+                max = results[k];
+                maxIndex = k;
+              }
             }
+            board[extractedDigits[i + 1]][extractedDigits[i + 2]][0] =
+              maxIndex + 1;
+            board[extractedDigits[i + 1]][extractedDigits[i + 2]][1] = 1;
           }
-          board[extractedDigits[i + 1]][extractedDigits[i + 2]][0] =
-            maxIndex + 1;
-          board[extractedDigits[i + 1]][extractedDigits[i + 2]][1] = 1;
+          if (isValidSudoku(board)) {
+            solveSudoku(board);
+            puzzleSolved = true;
+          } else {
+            resetBoard();
+          }
         }
-        if (solveSudoku(board)) {
-          puzzleSolved = true;
-        } else {
-          resetBoard();
-        }
+        cropped.delete();
       }
-      cropped.delete();
+    } else {
+      resetBoard();
+      puzzleSolved = false;
     }
-  } else {
-    resetBoard();
-    puzzleSolved = false;
+    if (puzzleSolved) {
+      overlayPuzzle(corners);
+    }
+    processed.delete();
+    if (corners != null) corners.delete;
+    cv.imshow("canvasOutput", src);
+
+    requestAnimationFrame(processVideo);
+  } catch (err) {
+    console.log(err);
+    requestAnimationFrame(startVideoProcessing);
   }
-  if (puzzleSolved) {
-    overlayPuzzle(corners);
-  }
-  processed.delete();
-  if (corners != null) corners.delete;
-  cv.imshow("canvasOutput", src);
-  requestAnimationFrame(processVideo);
 }
 function stopVideoProcessing() {
   if (src != null && !src.isDeleted()) src.delete();
@@ -281,7 +288,7 @@ function findCorners(image) {
     // Check contour is roughly square
     let perimeter = cv.arcLength(contours.get(maxIndex), true);
     let approx = new cv.Mat();
-    cv.approxPolyDP(contours.get(maxIndex), approx, 0.02 * perimeter, true);
+    cv.approxPolyDP(contours.get(maxIndex), approx, 0.1 * perimeter, true);
     perimeter.delete;
 
     // If approx has 4 corners, assume puzzle found for now
