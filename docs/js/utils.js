@@ -115,7 +115,10 @@ let gridSize = null;
 function startCamera() {
   if (streaming) return;
   navigator.mediaDevices
-    .getUserMedia({ video: { facingMode: "environment" }, audio: false })
+    .getUserMedia({
+      video: { width: 720, height: 1280, facingMode: "environment" },
+      audio: false,
+    })
     .then(function (s) {
       stream = s;
       video.srcObject = s;
