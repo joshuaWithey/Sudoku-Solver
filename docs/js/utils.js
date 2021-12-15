@@ -116,7 +116,7 @@ function startCamera() {
   if (streaming) return;
   navigator.mediaDevices
     .getUserMedia({
-      video: { height: 1280, facingMode: "environment" },
+      video: { height: 720, facingMode: "environment" },
       audio: false,
     })
     .then(function (s) {
