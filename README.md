@@ -1,7 +1,10 @@
 # Augmented reality sudoku solver
 
-## 14/12/2021 
+## Try it here!
 https://joshuawithey.github.io/Sudoku-Solver
+
+## Demo
+<img src="demo.gif" alt="demo" style="width: 540px;"/>
 
 ## 6/12/2021
 
