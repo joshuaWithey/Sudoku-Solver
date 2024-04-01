@@ -29,34 +29,27 @@ while True:
     ret, frame = capture.read()
     # Find corners of puzzle out of frame
     corners, processed_frame = find_puzzle(frame)
-
     c = cv2.waitKey(1)
 
-    if c == 32:
+    if corners is not None:
+        puzzle_not_found = 0
+        if not puzzle_solved:
+            # Extract digits from image
+            cropped_frame = crop_puzzle(processed_frame, corners)
+            board = extract_board(cropped_frame, interpreter,
+                                  input_details, output_details)
 
-        if corners is not None:
-            print(puzzle_solved)
-            puzzle_not_found = 0
-            if not puzzle_solved:
-                # Extract digits from image
-                cropped_frame = crop_puzzle(processed_frame, corners)
-                board = extract_board(cropped_frame, interpreter,
-                                      input_details, output_details)
-
-                if board is not None:
-                    if solve_sudoku(board):
-                        puzzle_solved = True
-        else:
-            puzzle_not_found += 1
-            if puzzle_not_found > 10:
-                puzzle_solved = False
+            if board is not None:
+                if solve_sudoku(board):
+                    puzzle_solved = True
+    else:
+        puzzle_not_found += 1
+        if puzzle_not_found > 10:
+            puzzle_solved = False
 
     if puzzle_solved:
         frame = overlay_puzzle(frame, board, cropped_frame.shape[0], corners)
 
-    # if processed_frame is not None:
-    #     cv2.imshow('Input', processed_frame)
-    # else:
     cv2.imshow('Input', frame)
 
     c = cv2.waitKey(1)

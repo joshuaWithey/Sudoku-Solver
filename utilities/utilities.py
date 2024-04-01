@@ -1,6 +1,6 @@
 import cv2
 import numpy as np
-from keras.preprocessing.image import img_to_array
+from tensorflow.keras.utils import img_to_array
 
 
 # Helper function to determine if image is blurry
@@ -233,14 +233,9 @@ def extract_board(image, interpreter, input_details, output_details):
         # Invert image so its white on black
         processed_image = cv2.bitwise_not(processed_image)
 
-        cv2.imshow('processed', processed_image)
-        cv2.waitKey(0)
-
         # Find outline contours
         contours, _ = cv2.findContours(
             processed_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        print('Len contours: ', len(contours))
 
         # Check number of contours found, should be at least 81 for 81 sudoku cells
         if len(contours) < 81:
